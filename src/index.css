@@ -1,0 +1,88 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+@layer base {
+  body {
+    font-family: 'Google Sans', 'Roboto', sans-serif;
+    background-color: #131314;
+    color: #e3e2e6;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Google Sans', sans-serif;
+  }
+}
+
+/* Material 3 Surface Containers */
+.g-surface-1 {
+  background-color: #1e1f20;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.g-surface-2 {
+  background-color: #282a2d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.g-surface-hover {
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.g-surface-hover:hover {
+  background-color: #333538;
+  border-color: rgba(138, 180, 248, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* Google Brand Color Utilities */
+.g-blue-pill {
+  background-color: #1a73e8;
+  color: #ffffff;
+}
+
+.g-blue-text {
+  color: #8ab4f8;
+}
+
+.g-red-pill {
+  background-color: rgba(242, 139, 130, 0.15);
+  color: #f28b82;
+  border: 1px solid rgba(242, 139, 130, 0.3);
+}
+
+.g-green-pill {
+  background-color: rgba(129, 201, 149, 0.15);
+  color: #81c995;
+  border: 1px solid rgba(129, 201, 149, 0.3);
+}
+
+.g-yellow-pill {
+  background-color: rgba(253, 214, 99, 0.15);
+  color: #fdd663;
+  border: 1px solid rgba(253, 214, 99, 0.3);
+}
+
+.g-purple-pill {
+  background-color: rgba(197, 138, 249, 0.15);
+  color: #c58af9;
+  border: 1px solid rgba(197, 138, 249, 0.3);
+}
+
+/* Custom Google Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #131314;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3c4043;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #5f6368;
+}
