@@ -268,7 +268,7 @@ export default function App() {
   if (!existingProjects.includes('General')) existingProjects.unshift('General');
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+    <div className={`min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white w-full ${isDesktopMode ? 'overflow-x-auto' : 'overflow-x-hidden max-w-full'}`}>
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
