@@ -1,21 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { FolderKanban, CheckCircle2, Flame, Plus, ChevronDown, ChevronUp, Calendar, Filter, ArrowUpDown } from 'lucide-react';
 
-export default function ProjectBreakdownView({ tasks, onUpdateStatus, onOpenEdit, onOpenQuickTaskWithProject, onOpenProjectEdit }) {
-  const [projects, setProjects] = useState([]);
+export default function ProjectBreakdownView({ tasks = [], onUpdateStatus, onOpenEdit, onOpenQuickTaskWithProject, onOpenProjectEdit }) {
   const [collapsedProjects, setCollapsedProjects] = useState({});
   const [filterMap, setFilterMap] = useState({});
   const [sortMap, setSortMap] = useState({});
   const [globalProjectSort, setGlobalProjectSort] = useState('alphabetical');
 
-  useEffect(() => {
-    fetch('/api/projects')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) setProjects(data.projects);
-      })
-      .catch((err) => console.error('Error fetching projects:', err));
-  }, [tasks]);
+  // Derive unique project list directly from tasks state (serverless compatible)
+  const projectNames = Array.from(new Set(tasks.map((t) => t.project || 'General')));
+  if (!projectNames.includes('General')) projectNames.unshift('General');
+
+  const projects = projectNames.map((name) => {
+    const projTasks = tasks.filter((t) => (t.project || 'General') === name);
+    const completed = projTasks.filter((t) => t.status === 'done').length;
+    return {
+      name,
+      total: projTasks.length,
+      completed
+    };
+  });
 
   const toggleCollapse = (projectName) => {
     setCollapsedProjects((prev) => ({
