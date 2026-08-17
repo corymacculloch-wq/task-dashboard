@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node node_modules/vite/bin/vite.js",
-    "build": "node node_modules/vite/bin/vite.js build",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview",
     "server": "node server.js",
     "start": "node server.js"
