@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Edit2, Flame, Calendar, User, Tag, FileText, CheckSquare, CheckCircle2 } from 'lucide-react';
 
-export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onConfirmPromote }) {
+export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSave, onConfirmPromote, existingProjects: passedProjects = ['General'] }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('medium');
@@ -29,19 +29,12 @@ export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onCon
 
   useEffect(() => {
     if (isOpen) {
-      fetch('/api/projects')
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && Array.isArray(data.projects)) {
-            const names = data.projects.map((p) => p.name);
-            if (!names.includes('General')) names.unshift('General');
-            if (task && task.project && !names.includes(task.project)) names.push(task.project);
-            setExistingProjects(names);
-          }
-        })
-        .catch((err) => console.error('Error fetching projects list:', err));
+      const names = [...passedProjects];
+      if (!names.includes('General')) names.unshift('General');
+      if (task && task.project && !names.includes(task.project)) names.push(task.project);
+      setExistingProjects(names);
     }
-  }, [isOpen, task]);
+  }, [isOpen, task, passedProjects]);
 
   if (!isOpen || !task) return null;
 

@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { FolderKanban, CheckCircle2, Flame, Plus, ChevronDown, ChevronUp, Calendar, Filter, ArrowUpDown } from 'lucide-react';
 
-export default function ProjectBreakdownView({ tasks = [], onUpdateStatus, onOpenEdit, onOpenQuickTaskWithProject, onOpenProjectEdit }) {
+export default function ProjectBreakdownView({
+  tasks = [],
+  onUpdateStatus,
+  onOpenEdit,
+  onEditTask,
+  onOpenQuickTaskWithProject,
+  onOpenProjectEdit
+}) {
+  const handleTaskEdit = onEditTask || onOpenEdit;
   const [collapsedProjects, setCollapsedProjects] = useState({});
   const [filterMap, setFilterMap] = useState({});
   const [sortMap, setSortMap] = useState({});
@@ -243,7 +251,7 @@ export default function ProjectBreakdownView({ tasks = [], onUpdateStatus, onOpe
                         filteredTasks.map((t) => (
                           <div
                             key={t.id}
-                            onClick={() => onOpenEdit && onOpenEdit(t)}
+                            onClick={() => handleTaskEdit && handleTaskEdit(t)}
                             title="Click task to open Edit View"
                             className="g-surface-2 p-3 rounded-2xl flex items-center justify-between gap-3 text-xs border border-[#3c4043]/60 hover:border-[#8ab4f8] hover:bg-[#282a2d] transition-all cursor-pointer group"
                           >

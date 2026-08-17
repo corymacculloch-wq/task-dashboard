@@ -248,6 +248,12 @@ export default function App() {
     return <AuthModal onAuthenticate={setAuthInfo} />;
   }
 
+  // Compute unique active project names from tasks for dropdown selectors
+  const existingProjects = Array.from(
+    new Set(tasks.map((t) => t.project || 'General'))
+  );
+  if (!existingProjects.includes('General')) existingProjects.unshift('General');
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
       <Navbar
@@ -305,8 +311,10 @@ export default function App() {
         {activeTab === 'projects' && (
           <ProjectBreakdownView
             tasks={tasks}
-            onOpenQuickTask={handleOpenQuickTaskWithProject}
-            onEditProject={setEditingProjectName}
+            onUpdateStatus={handleUpdateStatus}
+            onEditTask={setEditingTaskItem}
+            onOpenQuickTaskWithProject={handleOpenQuickTaskWithProject}
+            onOpenProjectEdit={setEditingProjectName}
           />
         )}
 
@@ -349,7 +357,8 @@ export default function App() {
           isOpen={isQuickTaskOpen}
           onClose={() => setIsQuickTaskOpen(false)}
           onCreateTask={handleCreateTask}
-          defaultProject={quickTaskProject}
+          initialProject={quickTaskProject}
+          existingProjects={existingProjects}
         />
       )}
 
@@ -359,6 +368,7 @@ export default function App() {
           isOpen={!!editingTaskItem}
           onClose={() => setEditingTaskItem(null)}
           onSave={(updates) => handleUpdateTask(editingTaskItem.id, updates)}
+          existingProjects={existingProjects}
         />
       )}
     </div>

@@ -7,7 +7,7 @@ const ACTION_VERBS = [
   'Reschedule', 'Process', 'Create', 'Submit', 'Pay', 'File'
 ];
 
-export default function QuickTaskModal({ isOpen, onClose, onCreateTask, initialProject = 'General' }) {
+export default function QuickTaskModal({ isOpen, onClose, onCreateTask, initialProject = 'General', existingProjects: passedProjects = ['General'] }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [project, setProject] = useState(initialProject);
@@ -22,19 +22,12 @@ export default function QuickTaskModal({ isOpen, onClose, onCreateTask, initialP
     if (isOpen) {
       setProject(initialProject || 'General');
       setIsCustomProject(false);
-      fetch('/api/projects')
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && Array.isArray(data.projects)) {
-            const names = data.projects.map((p) => p.name);
-            if (!names.includes('General')) names.unshift('General');
-            if (initialProject && !names.includes(initialProject)) names.push(initialProject);
-            setExistingProjects(names);
-          }
-        })
-        .catch((err) => console.error('Error fetching projects list:', err));
+      const names = [...passedProjects];
+      if (!names.includes('General')) names.unshift('General');
+      if (initialProject && !names.includes(initialProject)) names.push(initialProject);
+      setExistingProjects(names);
     }
-  }, [isOpen, initialProject]);
+  }, [isOpen, initialProject, passedProjects]);
 
   if (!isOpen) return null;
 
