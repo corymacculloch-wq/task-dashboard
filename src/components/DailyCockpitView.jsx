@@ -11,8 +11,10 @@ export default function DailyCockpitView({
   onOpenMasterTable,
   onUndo,
   onUpdateTask,
-  onOpenEdit
+  onOpenEdit,
+  onEditTask
 }) {
+  const handleEdit = onEditTask || onOpenEdit;
   const [cockpitMode, setCockpitMode] = useState('timeline'); // 'triage' | 'timeline' (default to focus & timeline view per user preference)
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -90,7 +92,8 @@ export default function DailyCockpitView({
           tasks={tasks}
           onUpdateStatus={onUpdateStatus}
           onUpdateTask={onUpdateTask}
-          onOpenEdit={onOpenEdit}
+          onOpenEdit={handleEdit}
+          onEditTask={handleEdit}
           onPromoteTask={onPromoteTask}
         />
       ) : (
@@ -101,7 +104,8 @@ export default function DailyCockpitView({
           onOpenMasterTable={onOpenMasterTable}
           onUndo={onUndo}
           onUpdateTask={onUpdateTask}
-          onOpenEdit={onOpenEdit}
+          onOpenEdit={handleEdit}
+          onEditTask={handleEdit}
         />
       )}
     </div>

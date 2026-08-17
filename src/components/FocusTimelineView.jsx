@@ -25,8 +25,10 @@ export default function FocusTimelineView({
   onUpdateStatus,
   onUpdateTask,
   onOpenEdit,
+  onEditTask,
   onPromoteTask
 }) {
+  const handleEdit = onEditTask || onOpenEdit;
   const [searchTerm, setSearchTerm] = useState('');
   const [filterProject, setFilterProject] = useState('ALL');
   const [showCompleted, setShowCompleted] = useState(false);
@@ -263,7 +265,7 @@ export default function FocusTimelineView({
                     </div>
 
                     <h4
-                      onClick={() => onOpenEdit(task)}
+                      onClick={() => handleEdit && handleEdit(task)}
                       title="Click to open task editor modal"
                       className="text-xs font-bold text-slate-100 hover:text-[#8ab4f8] cursor-pointer line-clamp-2 mb-1 transition-colors"
                     >
@@ -340,7 +342,7 @@ export default function FocusTimelineView({
                 isOverdue
                 onUpdateStatus={onUpdateStatus}
                 onUpdateTask={onUpdateTask}
-                onOpenEdit={onOpenEdit}
+                onOpenEdit={handleEdit}
                 onQuickSchedule={handleQuickSchedule}
                 formatRelativeDate={formatRelativeDate}
               />
@@ -375,7 +377,7 @@ export default function FocusTimelineView({
                 isToday
                 onUpdateStatus={onUpdateStatus}
                 onUpdateTask={onUpdateTask}
-                onOpenEdit={onOpenEdit}
+                onOpenEdit={handleEdit}
                 onQuickSchedule={handleQuickSchedule}
                 formatRelativeDate={formatRelativeDate}
               />
@@ -409,7 +411,7 @@ export default function FocusTimelineView({
                 task={task}
                 onUpdateStatus={onUpdateStatus}
                 onUpdateTask={onUpdateTask}
-                onOpenEdit={onOpenEdit}
+                onOpenEdit={handleEdit}
                 onQuickSchedule={handleQuickSchedule}
                 formatRelativeDate={formatRelativeDate}
               />
@@ -437,7 +439,7 @@ export default function FocusTimelineView({
                 task={task}
                 onUpdateStatus={onUpdateStatus}
                 onUpdateTask={onUpdateTask}
-                onOpenEdit={onOpenEdit}
+                onOpenEdit={handleEdit}
                 onQuickSchedule={handleQuickSchedule}
                 formatRelativeDate={formatRelativeDate}
               />
@@ -471,7 +473,7 @@ export default function FocusTimelineView({
                 isUnscheduled
                 onUpdateStatus={onUpdateStatus}
                 onUpdateTask={onUpdateTask}
-                onOpenEdit={onOpenEdit}
+                onOpenEdit={handleEdit}
                 onQuickSchedule={handleQuickSchedule}
                 formatRelativeDate={formatRelativeDate}
               />

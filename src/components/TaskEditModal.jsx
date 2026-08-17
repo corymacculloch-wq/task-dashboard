@@ -52,7 +52,7 @@ export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSav
 
   const handleSave = (e) => {
     if (e) e.preventDefault();
-    onSaveTask(task.id, {
+    const updates = {
       title,
       description,
       status,
@@ -61,7 +61,13 @@ export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSav
       due: due || null,
       assignee: assignee || null,
       project
-    });
+    };
+
+    if (onSave) {
+      onSave(updates);
+    } else if (onSaveTask) {
+      onSaveTask(task.id, updates);
+    }
     onClose();
   };
 
