@@ -13,6 +13,7 @@ import {
 export default function KanbanView({
   tasks,
   onUpdateStatus,
+  onEditTask,
   onPromoteTask
 }) {
   const [selectedProject, setSelectedProject] = useState('ALL');
@@ -72,8 +73,8 @@ export default function KanbanView({
         </div>
       </div>
 
-      {/* Kanban Columns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Kanban Columns (Horizontal Swipeable on Mobile, Grid on Desktop) */}
+      <div className="flex md:grid md:grid-cols-4 gap-4 md:gap-6 overflow-x-auto snap-x snap-mandatory pb-4">
         {columns.map((col) => {
           const Icon = col.icon;
           const colTasks = filteredTasks.filter((t) => t.status === col.id);
@@ -81,7 +82,7 @@ export default function KanbanView({
           return (
             <div
               key={col.id}
-              className={`g-surface-1 p-4 rounded-3xl flex flex-col h-[calc(100vh-250px)] border ${col.border}`}
+              className={`g-surface-1 p-4 rounded-3xl flex flex-col h-[calc(100vh-250px)] min-w-[285px] md:min-w-0 snap-center border ${col.border}`}
             >
               {/* Column Header */}
               <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#3c4043]">
@@ -104,7 +105,7 @@ export default function KanbanView({
                   colTasks.map((task) => (
                     <div
                       key={task.id}
-                      className="g-surface-2 p-4 rounded-2xl space-y-3 hover:border-[#8ab4f8]/50 transition-all group"
+                      className="g-surface-2 p-4 rounded-2xl space-y-3 hover:border-[#8ab4f8]/50 transition-all group border border-[#3c4043]/50"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-[#131314] text-slate-300 border border-[#3c4043]">
@@ -117,7 +118,11 @@ export default function KanbanView({
                         )}
                       </div>
 
-                      <h4 className="text-sm font-semibold text-slate-100 line-clamp-3 leading-snug">
+                      <h4
+                        onClick={() => onEditTask && onEditTask(task)}
+                        title="Click to edit task"
+                        className="text-sm font-semibold text-slate-100 hover:text-[#8ab4f8] cursor-pointer line-clamp-3 leading-snug transition-colors"
+                      >
                         {task.title}
                       </h4>
 

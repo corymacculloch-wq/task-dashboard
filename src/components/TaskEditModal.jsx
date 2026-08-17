@@ -89,7 +89,7 @@ export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSav
       onClick={onClose}
     >
       <div
-        className="bg-[#1e1f20] w-full max-w-xl rounded-3xl p-6 border-2 border-[#8ab4f8] shadow-2xl shadow-[#8ab4f8]/20 relative space-y-4 text-slate-100"
+        className="bg-[#1e1f20] w-full max-w-xl rounded-3xl p-5 sm:p-6 border-2 border-[#8ab4f8] shadow-2xl shadow-[#8ab4f8]/20 relative space-y-4 text-slate-100 max-h-[85vh] overflow-y-auto pb-10"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >

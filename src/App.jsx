@@ -29,6 +29,19 @@ export default function App() {
     return token ? { token, owner, repo } : null;
   });
 
+  // Desktop Scaling Mode State
+  const [isDesktopMode, setIsDesktopMode] = useState(() => {
+    return localStorage.getItem('vault_desktop_mode') === 'true';
+  });
+
+  const handleToggleDesktopMode = () => {
+    setIsDesktopMode((prev) => {
+      const next = !prev;
+      localStorage.setItem('vault_desktop_mode', String(next));
+      return next;
+    });
+  };
+
   const [isQuickTaskOpen, setIsQuickTaskOpen] = useState(false);
   const [quickTaskProject, setQuickTaskProject] = useState('General');
   const [promoteTaskItem, setPromoteTaskItem] = useState(null);
@@ -269,10 +282,18 @@ export default function App() {
         lastUndoDescription={undoToast?.description || ''}
         onSignOut={handleSignOut}
         authInfo={authInfo}
+        isDesktopMode={isDesktopMode}
+        onToggleDesktopMode={handleToggleDesktopMode}
       />
 
       {/* Main View Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col">
+      <main
+        className={
+          isDesktopMode
+            ? 'flex-1 min-w-[1280px] w-full mx-auto p-6 flex flex-col overflow-x-auto'
+            : 'flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col'
+        }
+      >
         {/* Loading Bar */}
         {isLoading && (
           <div className="mb-4 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-between text-indigo-300 text-sm animate-pulse">

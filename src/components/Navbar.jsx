@@ -11,7 +11,9 @@ import {
   CheckSquare,
   RotateCcw,
   LogOut,
-  Github
+  Github,
+  Monitor,
+  Smartphone
 } from 'lucide-react';
 
 export default function Navbar({
@@ -26,7 +28,9 @@ export default function Navbar({
   undoCount = 0,
   lastUndoDescription = '',
   onSignOut,
-  authInfo
+  authInfo,
+  isDesktopMode,
+  onToggleDesktopMode
 }) {
   const tabs = [
     {
@@ -102,7 +106,7 @@ export default function Navbar({
         </div>
 
         {/* Google Material 3 Navigation Rail / Tabs */}
-        <nav className="flex items-center gap-1.5 bg-[#131314] p-1.5 rounded-full border border-[#3c4043] shadow-inner">
+        <nav className="flex items-center gap-1.5 bg-[#131314] p-1.5 rounded-full border border-[#3c4043] shadow-inner overflow-x-auto max-w-full shrink-0">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -111,7 +115,7 @@ export default function Navbar({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 title={tab.tooltip}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs transition-all duration-200 cursor-pointer ${
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs transition-all duration-200 cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'bg-[#1a73e8] text-white shadow-lg shadow-[#1a73e8]/50 ring-2 ring-[#8ab4f8] font-bold scale-[1.04]'
                     : 'text-slate-400 hover:text-slate-100 hover:bg-[#282a2d]'
@@ -128,7 +132,24 @@ export default function Navbar({
         </nav>
 
         {/* Google Primary FAB & Controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 shrink-0">
+          {/* Desktop Scale View Toggle Button */}
+          <button
+            onClick={onToggleDesktopMode}
+            title={
+              isDesktopMode
+                ? 'Desktop Scaling Mode Active: App is zoomed to 1280px desktop width. Click to switch to Fluid Mobile View.'
+                : 'Fluid Mobile Mode Active: App scales to screen width. Click to switch to Desktop Scaling Mode.'
+            }
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+              isDesktopMode
+                ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/50 shadow-md shadow-indigo-500/10'
+                : 'bg-[#282a2d] text-slate-400 border-[#3c4043] hover:text-slate-200'
+            }`}
+          >
+            {isDesktopMode ? <Monitor className="w-3.5 h-3.5 text-indigo-400" /> : <Smartphone className="w-3.5 h-3.5" />}
+            <span>{isDesktopMode ? 'Desktop Mode' : 'Mobile View'}</span>
+          </button>
           {/* Undo Action Button */}
           <button
             onClick={onUndo}

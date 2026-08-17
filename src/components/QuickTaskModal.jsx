@@ -56,7 +56,7 @@ export default function QuickTaskModal({ isOpen, onClose, onCreateTask, initialP
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-      <div className="g-surface-1 w-full max-w-lg rounded-3xl p-6 border-[#3c4043] shadow-2xl relative">
+      <div className="g-surface-1 w-full max-w-lg rounded-3xl p-5 sm:p-6 border-[#3c4043] shadow-2xl relative max-h-[85vh] overflow-y-auto pb-10">
         <div className="flex items-center justify-between pb-4 border-b border-[#3c4043]">
           <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
             <Plus className="w-5 h-5 text-[#8ab4f8]" /> Create New Task
