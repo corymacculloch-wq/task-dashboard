@@ -54,12 +54,12 @@ export default function DailyCockpitView({
             }`}
           >
             <LayoutList className="w-3.5 h-3.5" />
-            <span>Rapid Triage (J/K)</span>
+            <span>Rapid Triage <span className="hidden sm:inline">(J/K)</span></span>
           </button>
         </div>
 
         {/* Compact Metrics Bar */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 max-w-full">
           <div className="flex items-center gap-2 bg-[#131314] px-3.5 py-1.5 rounded-full border border-[#3c4043]">
             <Clock className="w-3.5 h-3.5 text-[#f28b82]" />
             <span className="text-xs text-slate-300 font-medium">Due/Overdue:</span>

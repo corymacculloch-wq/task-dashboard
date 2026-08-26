@@ -144,22 +144,22 @@ export default function FocusTimelineView({
     <div className="space-y-6 animate-fadeIn text-slate-100 font-sans pb-12">
       {/* Search & Filter Toolbar */}
       <div className="bg-[#1e1f20] border border-[#3c4043] p-4 rounded-3xl flex flex-wrap items-center justify-between gap-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="relative h-9 flex items-center">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          <div className="relative h-9 flex items-center w-full sm:w-auto">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Filter timeline..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-[#131314] border border-[#3c4043] text-slate-200 text-xs rounded-full pl-9 pr-3 h-9 focus:outline-none focus:border-[#8ab4f8] w-56"
+              className="bg-[#131314] border border-[#3c4043] text-slate-200 text-xs rounded-full pl-9 pr-3 h-9 focus:outline-none focus:border-[#8ab4f8] w-full sm:w-56"
             />
           </div>
 
           <select
             value={filterProject}
             onChange={(e) => setFilterProject(e.target.value)}
-            className="bg-[#131314] border border-[#3c4043] text-slate-200 text-xs rounded-full px-3.5 h-9 focus:outline-none focus:border-[#8ab4f8] cursor-pointer"
+            className="bg-[#131314] border border-[#3c4043] text-slate-200 text-xs rounded-full px-3.5 h-9 focus:outline-none focus:border-[#8ab4f8] cursor-pointer max-w-full"
           >
             <option value="ALL">All Projects ({projects.length})</option>
             {projects.map((p) => (
@@ -179,7 +179,7 @@ export default function FocusTimelineView({
         </div>
 
         {/* Timeline Quick Metrics Badges */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {overdueTasks.length > 0 && (
             <span className="bg-[#f28b82]/15 text-[#f28b82] border border-[#f28b82]/30 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 animate-pulse">
               <AlertTriangle className="w-3.5 h-3.5" />
@@ -214,7 +214,7 @@ export default function FocusTimelineView({
                     Top Priority
                   </span>
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-300">
                   Algorithmic recommendations based on urgency, high priority, and active state.
                 </p>
               </div>

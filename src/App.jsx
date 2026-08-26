@@ -10,7 +10,7 @@ import TaskPromotionModal from './components/TaskPromotionModal';
 import TaskEditModal from './components/TaskEditModal';
 import ProjectEditModal from './components/ProjectEditModal';
 import AuthModal from './components/AuthModal';
-import { RotateCcw, AlertCircle, RefreshCw } from 'lucide-react';
+import { RotateCcw, AlertCircle, RefreshCw, Plus } from 'lucide-react';
 import { fetchAllTasksFromGitHub, commitFileToGitHub } from './services/githubClient';
 import { serializeTaskToMarkdown } from './utils/vaultParserBrowser';
 
@@ -371,6 +371,15 @@ export default function App() {
           <span>{notification}</span>
         </div>
       )}
+
+      {/* Mobile Floating Action Button (FAB) */}
+      <button
+        onClick={() => handleOpenQuickTaskWithProject('General')}
+        title="Quick Task (+): Open task creation modal"
+        className="sm:hidden fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-[#8ab4f8] text-[#0f172a] shadow-2xl flex items-center justify-center font-bold active:scale-95 transition-all border border-white/20"
+      >
+        <Plus className="w-6 h-6 stroke-[3]" />
+      </button>
 
       {/* Modals */}
       {isQuickTaskOpen && (

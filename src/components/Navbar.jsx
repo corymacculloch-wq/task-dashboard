@@ -115,7 +115,7 @@ export default function Navbar({
             <button
               onClick={onOpenQuickTask}
               title="Quick Task (+): Open modal to create a new task"
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#8ab4f8] hover:bg-[#a8c7fa] text-[#0f172a] text-xs font-bold shadow-md transition-all cursor-pointer shrink-0"
+              className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#8ab4f8] hover:bg-[#a8c7fa] text-[#0f172a] text-xs font-bold shadow-md transition-all cursor-pointer shrink-0"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Task</span>
