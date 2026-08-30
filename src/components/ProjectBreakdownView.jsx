@@ -10,7 +10,8 @@ import {
   Filter,
   ArrowUpDown,
   Info,
-  AlertCircle
+  AlertCircle,
+  Folder
 } from 'lucide-react';
 
 export default function ProjectBreakdownView({
@@ -26,6 +27,7 @@ export default function ProjectBreakdownView({
   const [filterMap, setFilterMap] = useState({});
   const [sortMap, setSortMap] = useState({});
   const [globalProjectSort, setGlobalProjectSort] = useState('alphabetical');
+  const [selectedProject, setSelectedProject] = useState('ALL');
   const [showGuide, setShowGuide] = useState(false);
 
   // Derive unique project list directly from tasks state (serverless compatible)
@@ -78,6 +80,11 @@ export default function ProjectBreakdownView({
     return 0;
   });
 
+  const displayedProjects = sortedProjects.filter((p) => {
+    if (selectedProject === 'ALL') return true;
+    return p.name === selectedProject;
+  });
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
@@ -90,10 +97,27 @@ export default function ProjectBreakdownView({
             Active initiative workspaces in <code className="text-[#8ab4f8]">1.active_projects/</code>
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Project Selector Dropdown (Matches Master Table styling) */}
+          <div className="flex items-center gap-1.5 bg-[#8ab4f8]/15 border border-[#8ab4f8]/40 hover:bg-[#8ab4f8]/25 rounded-full px-3.5 py-1.5 transition-all">
+            <Folder className="w-3.5 h-3.5 text-[#8ab4f8]" />
+            <select
+              value={selectedProject}
+              onChange={(e) => setSelectedProject(e.target.value)}
+              className="bg-transparent text-[#8ab4f8] text-xs font-bold focus:outline-none cursor-pointer"
+            >
+              <option value="ALL" className="bg-[#1e1f20] text-slate-200">All Projects</option>
+              {projects.map((p) => (
+                <option key={p.name} value={p.name} className="bg-[#1e1f20] text-slate-200">
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex items-center gap-1.5 text-xs text-slate-300 bg-[#131314] px-3 py-1.5 rounded-full border border-[#3c4043]">
             <ArrowUpDown className="w-3.5 h-3.5 text-[#8ab4f8]" />
-            <span className="font-semibold text-slate-400">Order Workspaces:</span>
+            <span className="font-semibold text-slate-400">Order:</span>
             <select
               value={globalProjectSort}
               onChange={(e) => setGlobalProjectSort(e.target.value)}
@@ -105,7 +129,9 @@ export default function ProjectBreakdownView({
             </select>
           </div>
           <div className="text-xs text-slate-400 font-semibold bg-[#131314] px-3 py-1.5 rounded-full border border-[#3c4043]">
-            {projects.length} Active Workspace Projects
+            {selectedProject === 'ALL'
+              ? `${projects.length} Active Workspace Projects`
+              : `Showing: ${selectedProject}`}
           </div>
         </div>
       </div>
@@ -154,8 +180,8 @@ export default function ProjectBreakdownView({
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {sortedProjects.map((proj) => {
+      <div className={selectedProject === 'ALL' ? "grid grid-cols-1 md:grid-cols-2 gap-6" : "grid grid-cols-1 gap-6 max-w-4xl mx-auto"}>
+        {displayedProjects.map((proj) => {
           const rawProjTasks = tasks.filter((t) => t.project === proj.name);
           const percent = proj.total > 0 ? Math.round((proj.completed / proj.total) * 100) : 0;
           const isCollapsed = !!collapsedProjects[proj.name];
