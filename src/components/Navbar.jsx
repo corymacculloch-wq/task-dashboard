@@ -37,7 +37,7 @@ export default function Navbar({
       id: 'cockpit',
       label: 'Daily Cockpit',
       icon: LayoutDashboard,
-      tooltip: 'Daily Cockpit: Rapid-triage feed optimized for keyboard navigation (J/K/D/P/E) and sub-second task sorting.'
+      tooltip: 'Daily Cockpit: Due-date timeline and active project task aggregator across the vault.'
     },
     {
       id: 'projects',

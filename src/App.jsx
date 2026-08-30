@@ -324,6 +324,7 @@ export default function App() {
           <DailyCockpitView
             tasks={tasks}
             onUpdateStatus={handleUpdateStatus}
+            onUpdateTask={handleUpdateTask}
             onEditTask={setEditingTaskItem}
             onPromoteTask={setPromoteTaskItem}
           />
