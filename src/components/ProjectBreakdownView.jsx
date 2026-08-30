@@ -26,7 +26,7 @@ export default function ProjectBreakdownView({
   const [filterMap, setFilterMap] = useState({});
   const [sortMap, setSortMap] = useState({});
   const [globalProjectSort, setGlobalProjectSort] = useState('alphabetical');
-  const [showGuide, setShowGuide] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Derive unique project list directly from tasks state (serverless compatible)
   const projectNames = Array.from(new Set(tasks.map((t) => t.project || 'General')));
