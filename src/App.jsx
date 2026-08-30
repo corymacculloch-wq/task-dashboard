@@ -9,14 +9,13 @@ import TaskPromotionModal from './components/TaskPromotionModal';
 import TaskEditModal from './components/TaskEditModal';
 import ProjectEditModal from './components/ProjectEditModal';
 import AuthModal from './components/AuthModal';
-import { RotateCcw, AlertCircle, RefreshCw, Plus } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import { fetchAllTasksFromGitHub, commitFileToGitHub } from './services/githubClient';
 import { serializeTaskToMarkdown } from './utils/vaultParserBrowser';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('cockpit');
   const [tasks, setTasks] = useState([]);
-  const [includeArchive, setIncludeArchive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState(null);
 
@@ -48,10 +47,9 @@ export default function App() {
   const [editingProjectName, setEditingProjectName] = useState(null);
 
   const [notification, setNotification] = useState(null);
-  const [undoToast, setUndoToast] = useState(null);
-  const [undoStack, setUndoStack] = useState(() => {
+  const [undoHistory, setUndoHistory] = useState(() => {
     try {
-      const saved = sessionStorage.getItem('undoStack');
+      const saved = localStorage.getItem('vault_undo_history');
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
       return [];
@@ -92,11 +90,11 @@ export default function App() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem('undoStack', JSON.stringify(undoStack.slice(-20)));
+      localStorage.setItem('vault_undo_history', JSON.stringify(undoHistory.slice(0, 30)));
     } catch (e) {
-      console.error('Error saving undo stack:', e);
+      console.error('Error saving undo history:', e);
     }
-  }, [undoStack]);
+  }, [undoHistory]);
 
   const handleSignOut = () => {
     localStorage.removeItem('vault_github_pat');
@@ -113,14 +111,16 @@ export default function App() {
     if (prevStatus === newStatus) return;
 
     if (pushUndo) {
-      setUndoStack((prev) => [
-        ...prev,
-        {
-          taskId: id,
-          prevTask: { ...existingTask },
-          description: `Revert "${existingTask.title}" to ${prevStatus}`
-        }
-      ]);
+      const actionRecord = {
+        id: `act-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        taskId: id,
+        type: 'status',
+        description: `Marked "${existingTask.title}" as ${newStatus}`,
+        timestamp: Date.now(),
+        project: existingTask.project,
+        prevTask: { ...existingTask }
+      };
+      setUndoHistory((prev) => [actionRecord, ...prev].slice(0, 30));
     }
 
     // Optimistic UI Update (0ms)
@@ -172,14 +172,25 @@ export default function App() {
     if (!existingTask) return;
 
     if (pushUndo) {
-      setUndoStack((prev) => [
-        ...prev,
-        {
-          taskId: id,
-          prevTask: { ...existingTask },
-          description: `Revert edits on "${existingTask.title}"`
-        }
-      ]);
+      const changes = [];
+      if (updates.status && updates.status !== existingTask.status) changes.push(`status to ${updates.status}`);
+      if (updates.due !== undefined && updates.due !== existingTask.due) changes.push(updates.due ? `due date to ${updates.due}` : 'cleared due date');
+      if (updates.priority && updates.priority !== existingTask.priority) changes.push(`priority to ${updates.priority}`);
+      if (updates.title && updates.title !== existingTask.title) changes.push(`title to "${updates.title}"`);
+      const desc = changes.length > 0
+        ? `Changed ${changes.join(', ')} on "${existingTask.title}"`
+        : `Updated properties on "${updates.title || existingTask.title}"`;
+
+      const actionRecord = {
+        id: `act-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        taskId: id,
+        type: updates.due !== undefined ? 'schedule' : 'edit',
+        description: desc,
+        timestamp: Date.now(),
+        project: updates.project || existingTask.project,
+        prevTask: { ...existingTask }
+      };
+      setUndoHistory((prev) => [actionRecord, ...prev].slice(0, 30));
     }
 
     // Optimistic UI Update
@@ -224,21 +235,34 @@ export default function App() {
     }
   };
 
-  // 3. Undo Handler (Supports button and Ctrl+Z)
-  const handleUndo = async () => {
-    if (undoStack.length === 0) {
-      showNotification('Nothing to undo.');
+  // 3. Selective Undo by Action ID
+  const handleUndoSpecific = async (actionId) => {
+    const action = undoHistory.find((a) => a.id === actionId);
+    if (!action) return;
+
+    setUndoHistory((prev) => prev.filter((a) => a.id !== actionId));
+
+    if (action.prevTask) {
+      const { id, status, priority, assignee, due, title, content, project } = action.prevTask;
+      await handleUpdateTask(id, { status, priority, assignee, due, title, content, project }, false);
+      showNotification(`Reverted: "${action.prevTask.title}" restored`);
+    }
+  };
+
+  // 4. Undo Most Recent Action
+  const handleUndoLatest = async () => {
+    if (undoHistory.length === 0) {
+      showNotification('No actions in history to undo.');
       return;
     }
+    await handleUndoSpecific(undoHistory[0].id);
+  };
 
-    const lastAction = undoStack[undoStack.length - 1];
-    setUndoStack((prev) => prev.slice(0, -1));
-
-    if (lastAction?.prevTask) {
-      const { id, status, priority, assignee, due, title, content, project } = lastAction.prevTask;
-      await handleUpdateTask(id, { status, priority, assignee, due, title, content, project }, false);
-      showNotification(`Undone: ${lastAction.description || 'Reverted action'}`);
-    }
+  // 5. Clear Entire Undo History
+  const handleClearUndoHistory = () => {
+    setUndoHistory([]);
+    localStorage.removeItem('vault_undo_history');
+    showNotification('Undo history cleared.');
   };
 
   // Global Ctrl+Z / Cmd+Z Undo Listener
@@ -247,12 +271,12 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
         e.preventDefault();
-        handleUndo();
+        handleUndoLatest();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undoStack]);
+  }, [undoHistory]);
 
   // 3. Create New Task
   const handleCreateTask = async (newTaskData) => {
@@ -324,13 +348,12 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenQuickTask={() => handleOpenQuickTaskWithProject('General')}
-        includeArchive={includeArchive}
-        setIncludeArchive={setIncludeArchive}
         isWsConnected={!isLoading}
         taskCount={tasks.length}
-        onUndo={handleUndo}
-        undoCount={undoStack.length}
-        lastUndoDescription={undoStack[undoStack.length - 1]?.description || ''}
+        undoHistory={undoHistory}
+        onUndoSpecific={handleUndoSpecific}
+        onUndoLatest={handleUndoLatest}
+        onClearUndoHistory={handleClearUndoHistory}
         onSignOut={handleSignOut}
         authInfo={authInfo}
         isDesktopMode={isDesktopMode}
