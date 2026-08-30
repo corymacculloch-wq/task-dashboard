@@ -209,15 +209,17 @@ export default function Navbar({
                   ? 'bg-[#3c4043] text-amber-300 border-amber-400 shadow-md ring-2 ring-amber-400/20'
                   : undoHistory.length > 0
                   ? 'bg-[#282a2d] text-amber-300 border-amber-500/50 hover:bg-[#3c4043] shadow-sm'
-                  : 'bg-[#282a2d] text-slate-300 border-[#3c4043] hover:text-slate-100'
+                  : 'bg-[#282a2d] text-amber-200 border-amber-500/30 hover:bg-[#3c4043] hover:text-amber-100'
               }`}
             >
               <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
               <span>Undo</span>
-              {undoHistory.length > 0 && (
+              {undoHistory.length > 0 ? (
                 <span className="bg-amber-400/20 text-amber-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                   {undoHistory.length}
                 </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 font-normal">(0)</span>
               )}
               <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isUndoOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -341,7 +343,7 @@ export default function Navbar({
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#8ab4f8] hover:bg-[#a8c7fa] text-[#0f172a] text-xs font-bold shadow-md transition-all cursor-pointer shrink-0"
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>+ Task</span>
+            <span>Task</span>
           </button>
         </div>
       </div>
