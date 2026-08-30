@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { FolderKanban, CheckCircle2, Flame, Plus, ChevronDown, ChevronUp, Calendar, Filter, ArrowUpDown } from 'lucide-react';
+import {
+  FolderKanban,
+  CheckCircle2,
+  Flame,
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  Filter,
+  ArrowUpDown,
+  Info,
+  AlertCircle
+} from 'lucide-react';
 
 export default function ProjectBreakdownView({
   tasks = [],
@@ -14,6 +26,7 @@ export default function ProjectBreakdownView({
   const [filterMap, setFilterMap] = useState({});
   const [sortMap, setSortMap] = useState({});
   const [globalProjectSort, setGlobalProjectSort] = useState('alphabetical');
+  const [showGuide, setShowGuide] = useState(true);
 
   // Derive unique project list directly from tasks state (serverless compatible)
   const projectNames = Array.from(new Set(tasks.map((t) => t.project || 'General')));
@@ -95,6 +108,50 @@ export default function ProjectBreakdownView({
             {projects.length} Active Workspace Projects
           </div>
         </div>
+      </div>
+
+      {/* ℹ️ Workspace Inclusion & Discovery Guide Card */}
+      <div className="bg-[#1e1f20] border border-[#3c4043] rounded-3xl p-4.5 text-xs text-slate-300 shadow-md">
+        <div
+          className="flex items-center justify-between cursor-pointer select-none"
+          onClick={() => setShowGuide(!showGuide)}
+        >
+          <div className="flex items-center gap-2 font-bold text-slate-100">
+            <Info className="w-4 h-4 text-[#8ab4f8]" />
+            <span>Workspace Discovery & Inclusion Rules</span>
+          </div>
+          <button
+            type="button"
+            className="text-slate-400 hover:text-slate-200 text-[11px] flex items-center gap-1 font-semibold cursor-pointer"
+          >
+            <span>{showGuide ? 'Hide Rules' : 'View Rules'}</span>
+            {showGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+
+        {showGuide && (
+          <div className="mt-3 pt-3 border-t border-[#3c4043] space-y-3">
+            <p className="text-slate-300 leading-relaxed">
+              Project workspaces are dynamically populated from task notes inside <code className="text-[#8ab4f8] bg-[#131314] px-1.5 py-0.5 rounded border border-[#3c4043]">1.active_projects/</code> (e.g. atomic <code className="text-slate-200">task-*.md</code> files or checklist items in <code className="text-slate-200">project.md</code> / <code className="text-slate-200">plan.md</code>).
+            </p>
+            <div className="bg-[#131314] border border-[#3c4043] rounded-2xl p-3.5 space-y-2">
+              <span className="font-bold text-[#f28b82] flex items-center gap-1.5 text-xs">
+                <AlertCircle className="w-3.5 h-3.5 text-[#f28b82]" /> What will not show up:
+              </span>
+              <ul className="space-y-1.5 text-[11px] text-slate-300 list-disc list-inside pl-1">
+                <li>
+                  <strong className="text-slate-100">Empty project folders:</strong> Folders containing no <code className="text-slate-400">.md</code> files or no active tasks.
+                </li>
+                <li>
+                  <strong className="text-slate-100">Non-task notes:</strong> Markdown notes whose filenames do not start with <code className="text-[#8ab4f8]">task-</code> and are not named <code className="text-[#8ab4f8]">project.md</code> or <code className="text-[#8ab4f8]">plan.md</code> (e.g. <code className="text-slate-400">notes.md</code>, <code className="text-slate-400">README.md</code>, <code className="text-slate-400">diagrams.md</code>).
+                </li>
+                <li>
+                  <strong className="text-slate-100">Folders outside 1.active_projects/:</strong> Notes and directories stored in other vault areas (e.g. <code className="text-slate-400">1.records/</code> or <code className="text-slate-400">2.sops/</code>).
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
