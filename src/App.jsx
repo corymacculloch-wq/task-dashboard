@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import DailyCockpitView from './components/DailyCockpitView';
-import KanbanView from './components/KanbanView';
 import AgentQueueView from './components/AgentQueueView';
 import ProjectBreakdownView from './components/ProjectBreakdownView';
 import TaskTableView from './components/TaskTableView';
@@ -105,13 +104,24 @@ export default function App() {
     setTasks([]);
   };
 
-  // 1. Optimistic Status Change (Kanban / Checkboxes)
-  const handleUpdateStatus = async (id, newStatus) => {
+  // 1. Optimistic Status Change
+  const handleUpdateStatus = async (id, newStatus, pushUndo = true) => {
     const existingTask = tasks.find((t) => t.id === id);
     if (!existingTask) return;
 
     const prevStatus = existingTask.status || 'todo';
     if (prevStatus === newStatus) return;
+
+    if (pushUndo) {
+      setUndoStack((prev) => [
+        ...prev,
+        {
+          taskId: id,
+          prevTask: { ...existingTask },
+          description: `Revert "${existingTask.title}" to ${prevStatus}`
+        }
+      ]);
+    }
 
     // Optimistic UI Update (0ms)
     setTasks((prev) =>
@@ -157,9 +167,20 @@ export default function App() {
   };
 
   // 2. Optimistic Task Details Edit
-  const handleUpdateTask = async (id, updates) => {
+  const handleUpdateTask = async (id, updates, pushUndo = true) => {
     const existingTask = tasks.find((t) => t.id === id);
     if (!existingTask) return;
+
+    if (pushUndo) {
+      setUndoStack((prev) => [
+        ...prev,
+        {
+          taskId: id,
+          prevTask: { ...existingTask },
+          description: `Revert edits on "${existingTask.title}"`
+        }
+      ]);
+    }
 
     // Optimistic UI Update
     setTasks((prev) =>
@@ -174,7 +195,7 @@ export default function App() {
         title: updates.title || existingTask.title,
         priority: updates.priority || existingTask.priority,
         assignee: updates.assignee || existingTask.assignee,
-        due: updates.due || existingTask.due,
+        due: updates.due !== undefined ? updates.due : existingTask.due,
         project: updates.project || existingTask.project,
         updated: new Date().toISOString().slice(0, 10)
       };
@@ -202,6 +223,36 @@ export default function App() {
       showNotification(`Error committing task edit: ${err.message}`);
     }
   };
+
+  // 3. Undo Handler (Supports button and Ctrl+Z)
+  const handleUndo = async () => {
+    if (undoStack.length === 0) {
+      showNotification('Nothing to undo.');
+      return;
+    }
+
+    const lastAction = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+
+    if (lastAction?.prevTask) {
+      const { id, status, priority, assignee, due, title, content, project } = lastAction.prevTask;
+      await handleUpdateTask(id, { status, priority, assignee, due, title, content, project }, false);
+      showNotification(`Undone: ${lastAction.description || 'Reverted action'}`);
+    }
+  };
+
+  // Global Ctrl+Z / Cmd+Z Undo Listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+        e.preventDefault();
+        handleUndo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undoStack]);
 
   // 3. Create New Task
   const handleCreateTask = async (newTaskData) => {
@@ -277,9 +328,9 @@ export default function App() {
         setIncludeArchive={setIncludeArchive}
         isWsConnected={!isLoading}
         taskCount={tasks.length}
-        onUndo={() => {}}
+        onUndo={handleUndo}
         undoCount={undoStack.length}
-        lastUndoDescription={undoToast?.description || ''}
+        lastUndoDescription={undoStack[undoStack.length - 1]?.description || ''}
         onSignOut={handleSignOut}
         authInfo={authInfo}
         isDesktopMode={isDesktopMode}
@@ -337,14 +388,6 @@ export default function App() {
             onEditTask={setEditingTaskItem}
             onOpenQuickTaskWithProject={handleOpenQuickTaskWithProject}
             onOpenProjectEdit={setEditingProjectName}
-          />
-        )}
-
-        {activeTab === 'kanban' && (
-          <KanbanView
-            tasks={tasks}
-            onUpdateStatus={handleUpdateStatus}
-            onEditTask={setEditingTaskItem}
           />
         )}
 
