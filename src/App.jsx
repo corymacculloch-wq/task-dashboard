@@ -9,7 +9,7 @@ import TaskPromotionModal from './components/TaskPromotionModal';
 import TaskEditModal from './components/TaskEditModal';
 import ProjectEditModal from './components/ProjectEditModal';
 import AuthModal from './components/AuthModal';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, Plus } from 'lucide-react';
 import { fetchAllTasksFromGitHub, commitFileToGitHub } from './services/githubClient';
 import { serializeTaskToMarkdown } from './utils/vaultParserBrowser';
 
