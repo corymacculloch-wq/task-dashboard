@@ -5,7 +5,6 @@ import {
   Calendar,
   AlertTriangle,
   CheckCircle2,
-  Bot,
   Check,
   Edit3,
   Search,
@@ -66,12 +65,6 @@ export default function DailyCockpitView({
 
   const projects = Array.from(new Set(tasks.map((t) => t.project).filter(Boolean)));
 
-  const activeTasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'archived');
-  const overdueOrDueToday = activeTasks.filter((t) => t.due && t.due <= todayStr);
-  const highPriority = activeTasks.filter((t) => t.priority === 'high');
-  const agentTasks = activeTasks.filter((t) => t.assignee === 'agent');
-  const completedToday = tasks.filter((t) => t.status === 'done');
-
   // Filter tasks
   const eligibleTasks = tasks.filter((t) => {
     if (!showCompleted && t.status === 'done') return false;
@@ -120,45 +113,6 @@ export default function DailyCockpitView({
 
   return (
     <div className="space-y-6 animate-fadeIn text-slate-100 font-sans pb-12">
-      {/* Top Metrics Summary Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#1e1f20] p-4 rounded-3xl border border-[#3c4043]">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-[#8ab4f8]/20 border border-[#8ab4f8]/40 flex items-center justify-center">
-            <Clock className="w-4 h-4 text-[#8ab4f8]" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-slate-100">Daily Cockpit</h2>
-            <p className="text-[11px] text-slate-400">Due-date timeline & active project task overview</p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 max-w-full">
-          <div className="flex items-center gap-2 bg-[#131314] px-3.5 py-1.5 rounded-full border border-[#3c4043]">
-            <Clock className="w-3.5 h-3.5 text-[#f28b82]" />
-            <span className="text-xs text-slate-300 font-medium">Due/Overdue:</span>
-            <span className="text-xs font-bold text-[#f28b82]">{overdueOrDueToday.length}</span>
-          </div>
-
-          <div className="flex items-center gap-2 bg-[#131314] px-3.5 py-1.5 rounded-full border border-[#3c4043]">
-            <Flame className="w-3.5 h-3.5 text-[#fdd663]" />
-            <span className="text-xs text-slate-300 font-medium">High Priority:</span>
-            <span className="text-xs font-bold text-[#fdd663]">{highPriority.length}</span>
-          </div>
-
-          <div className="flex items-center gap-2 bg-[#131314] px-3.5 py-1.5 rounded-full border border-[#3c4043]">
-            <Bot className="w-3.5 h-3.5 text-[#c58af9]" />
-            <span className="text-xs text-slate-300 font-medium">Agent Candidates:</span>
-            <span className="text-xs font-bold text-[#c58af9]">{agentTasks.length}</span>
-          </div>
-
-          <div className="flex items-center gap-2 bg-[#131314] px-3.5 py-1.5 rounded-full border border-[#3c4043]">
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#81c995]" />
-            <span className="text-xs text-slate-300 font-medium">Done:</span>
-            <span className="text-xs font-bold text-[#81c995]">{completedToday.length}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Search & Filter Toolbar */}
       <div className="bg-[#1e1f20] border border-[#3c4043] p-4 rounded-3xl flex flex-wrap items-center justify-between gap-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
