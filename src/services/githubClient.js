@@ -78,6 +78,7 @@ export async function fetchFileContent(token, owner, repo, path) {
 
 /**
  * Fetches all tasks across 1.active_projects in the private repository.
+ * Deduplicates inline checklist items that reference atomic task notes per GTD SOP.
  */
 export async function fetchAllTasksFromGitHub(token, owner, repo) {
   const projectFiles = await fetchVaultTree(token, owner, repo);
@@ -93,6 +94,14 @@ export async function fetchAllTasksFromGitHub(token, owner, repo) {
 
   const fileResults = await Promise.all(filePromises);
 
+  // Maps and sets for deduplication
+  const atomicTaskMap = new Map();
+  const atomicTaskRefs = new Set();
+  const atomicTaskByProjectTitle = new Map();
+
+  const inlineFiles = [];
+
+  // Pass 1: Parse all atomic task notes first
   for (const item of fileResults) {
     if (!item) continue;
     const filename = item.path.split('/').pop();
@@ -100,14 +109,62 @@ export async function fetchAllTasksFromGitHub(token, owner, repo) {
     const projectName = pathParts.length > 2 ? pathParts[1] : 'General';
 
     if (filename.startsWith('task-')) {
-      // Atomic task note
       const task = parseAtomicTaskNote(item.path, item.text, item.sha);
       tasks.push(task);
+
+      const cleanBase = filename.toLowerCase();
+      const noExt = cleanBase.replace(/\.md$/, '');
+      atomicTaskRefs.add(cleanBase);
+      atomicTaskRefs.add(noExt);
+      atomicTaskMap.set(cleanBase, task);
+      atomicTaskMap.set(noExt, task);
+
+      const normTitleKey = `${(task.project || projectName).toLowerCase()}:::${task.title.toLowerCase().trim()}`;
+      atomicTaskByProjectTitle.set(normTitleKey, task);
     } else if (filename === 'project.md' || filename === 'plan.md') {
-      // Parse inline checkboxes inside project/plan notes
-      const inlineTasks = parseInlineCheckboxes(item.text, item.path, projectName);
-      inlineTasks.forEach((t) => (t.sha = item.sha));
-      tasks.push(...inlineTasks);
+      inlineFiles.push(item);
+    }
+  }
+
+  // Pass 2: Parse inline checkboxes and deduplicate
+  for (const item of inlineFiles) {
+    const pathParts = item.path.split('/');
+    const projectName = pathParts.length > 2 ? pathParts[1] : 'General';
+    const inlineTasks = parseInlineCheckboxes(item.text, item.path, projectName);
+
+    for (const inlineTask of inlineTasks) {
+      inlineTask.sha = item.sha;
+
+      let matchedAtomicTask = null;
+
+      // 1. Match via taskRef pointer
+      if (inlineTask.taskRef) {
+        const refLower = inlineTask.taskRef.toLowerCase();
+        const refNoExt = refLower.replace(/\.md$/, '');
+        if (atomicTaskRefs.has(refLower) || atomicTaskRefs.has(refNoExt)) {
+          matchedAtomicTask = atomicTaskMap.get(refLower) || atomicTaskMap.get(refNoExt);
+        }
+      }
+
+      // 2. Fallback match: same project and identical normalized title
+      if (!matchedAtomicTask && inlineTask.title) {
+        const normTitleKey = `${projectName.toLowerCase()}:::${inlineTask.title.toLowerCase().trim()}`;
+        if (atomicTaskByProjectTitle.has(normTitleKey)) {
+          matchedAtomicTask = atomicTaskByProjectTitle.get(normTitleKey);
+        }
+      }
+
+      if (matchedAtomicTask) {
+        // Safe status merge: if inline checkbox is checked, ensure atomic task reflects completion
+        if (inlineTask.status === 'done' && matchedAtomicTask.status !== 'done') {
+          matchedAtomicTask.status = 'done';
+        }
+        // Deduplicate: atomic task file already represents this item
+        continue;
+      }
+
+      // Genuine standalone inline task without an atomic file
+      tasks.push(inlineTask);
     }
   }
 
@@ -152,4 +209,86 @@ export async function commitFileToGitHub(token, owner, repo, path, sha, contentT
     sha: responseData.content.sha,
     commitSha: responseData.commit.sha
   };
+}
+
+/**
+ * Safely updates an inline task checkbox inside project.md or plan.md without modifying other lines.
+ */
+export async function updateInlineTaskInFile(token, owner, repo, filePath, lineIndex, rawLine, newStatus) {
+  const fileData = await fetchFileContent(token, owner, repo, filePath);
+  const lines = fileData.text.split(/\r?\n/);
+
+  let targetIndex = -1;
+  if (lineIndex !== undefined && lineIndex < lines.length && lines[lineIndex].includes('- [')) {
+    targetIndex = lineIndex;
+  } else if (rawLine) {
+    targetIndex = lines.findIndex((l) => l.trim() === rawLine.trim());
+  }
+
+  if (targetIndex === -1) {
+    throw new Error(`Could not find task line in ${filePath}`);
+  }
+
+  const mark = newStatus === 'done' ? 'x' : ' ';
+  lines[targetIndex] = lines[targetIndex].replace(/^(\s*-\s*\[)[ xX](\])/, `$1${mark}$2`);
+
+  const updatedText = lines.join('\n');
+  const commitMsg = `Update checklist item status to ${newStatus}`;
+  return await commitFileToGitHub(token, owner, repo, filePath, fileData.sha, updatedText, commitMsg);
+}
+
+/**
+ * Safely updates metadata properties of an inline task in project.md without modifying frontmatter or other sections.
+ */
+export async function updateInlineTaskPropertiesInFile(token, owner, repo, filePath, lineIndex, rawLine, updates) {
+  const fileData = await fetchFileContent(token, owner, repo, filePath);
+  const lines = fileData.text.split(/\r?\n/);
+
+  let targetIndex = -1;
+  if (lineIndex !== undefined && lineIndex < lines.length && lines[lineIndex].includes('- [')) {
+    targetIndex = lineIndex;
+  } else if (rawLine) {
+    targetIndex = lines.findIndex((l) => l.trim() === rawLine.trim());
+  }
+
+  if (targetIndex === -1) {
+    throw new Error(`Could not find task line in ${filePath}`);
+  }
+
+  let line = lines[targetIndex];
+
+  if (updates.status !== undefined) {
+    const mark = updates.status === 'done' ? 'x' : ' ';
+    line = line.replace(/^(\s*-\s*\[)[ xX](\])/, `$1${mark}$2`);
+  }
+  if (updates.priority !== undefined) {
+    if (/\[priority::\s*[^\]]+\]/i.test(line)) {
+      line = line.replace(/\[priority::\s*[^\]]+\]/i, `[priority:: ${updates.priority}]`);
+    } else {
+      line += ` [priority:: ${updates.priority}]`;
+    }
+  }
+  if (updates.due !== undefined) {
+    if (/\[due::\s*[^\]]+\]/i.test(line)) {
+      if (updates.due) {
+        line = line.replace(/\[due::\s*[^\]]+\]/i, `[due:: ${updates.due}]`);
+      } else {
+        line = line.replace(/\s*\[due::\s*[^\]]+\]/i, '');
+      }
+    } else if (updates.due) {
+      line += ` [due:: ${updates.due}]`;
+    }
+  }
+  if (updates.assignee !== undefined) {
+    if (/\[assignee::\s*[^\]]+\]/i.test(line)) {
+      line = line.replace(/\[assignee::\s*[^\]]+\]/i, `[assignee:: ${updates.assignee}]`);
+    } else {
+      line += ` [assignee:: ${updates.assignee}]`;
+    }
+  }
+
+  lines[targetIndex] = line;
+  const updatedText = lines.join('\n');
+  const commitMsg = `Update checklist item properties`;
+  return await commitFileToGitHub(token, owner, repo, filePath, fileData.sha, updatedText, commitMsg);
 }

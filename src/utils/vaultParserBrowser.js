@@ -34,6 +34,22 @@ export function parseYamlFrontmatter(text) {
 }
 
 /**
+ * Helper to normalize a task reference string to just the base filename (e.g. "task-xyz.md").
+ * Handles [[task-xyz.md]], ./task-xyz.md, subpaths, and whitespace.
+ */
+export function normalizeTaskRef(ref) {
+  if (!ref) return '';
+  let clean = ref.trim();
+  // Strip wikilink brackets [[...]]
+  clean = clean.replace(/^\[\[(.*)\]\]$/, '$1').trim();
+  // Strip leading ./ or path traversal
+  clean = clean.replace(/^\.\//, '');
+  // Extract basename
+  clean = clean.split('/').pop().split('\\').pop().trim();
+  return clean;
+}
+
+/**
  * Extracts inline markdown checkboxes (- [ ] task) from note body.
  */
 export function parseInlineCheckboxes(text, filePath, projectName) {
@@ -44,23 +60,44 @@ export function parseInlineCheckboxes(text, filePath, projectName) {
     const match = line.match(/^(\s*)-\s*\[([ xX])\]\s*(.*)$/);
     if (match) {
       const isDone = match[2].toLowerCase() === 'x';
-      const content = match[3].trim();
+      const rawContent = match[3].trim();
       
       // Parse inline metadata like [assignee:: agent] or [due:: 2026-08-17]
-      const assigneeMatch = content.match(/\[assignee::\s*([^\]]+)\]/i);
-      const dueMatch = content.match(/\[due::\s*([^\]]+)\]/i);
-      const priorityMatch = content.match(/\[priority::\s*([^\]]+)\]/i);
+      const assigneeMatch = rawContent.match(/\[assignee::\s*([^\]]+)\]/i);
+      const dueMatch = rawContent.match(/\[due::\s*([^\]]+)\]/i);
+      const priorityMatch = rawContent.match(/\[priority::\s*([^\]]+)\]/i);
+      const descMatch = rawContent.match(/\[description::\s*([^\]]+)\]/i);
       
+      // Parse task-ref (e.g. <!-- task-ref: task-xyz.md --> or <!-- task-ref: ./task-xyz.md --> or <!-- task-ref: [[task-xyz.md]] -->)
+      const refMatch = rawContent.match(/<!--\s*task-ref:\s*([^>\s]+)\s*-->/i);
+      const rawTaskRef = refMatch ? refMatch[1].trim() : null;
+      const taskRef = rawTaskRef ? normalizeTaskRef(rawTaskRef) : null;
+
+      // Parse gtask-id
+      const gtaskMatch = rawContent.match(/<!--\s*gtask-id:\s*([^>\s]+)\s*-->/i);
+      const gtaskId = gtaskMatch ? gtaskMatch[1].trim() : null;
+
+      // Clean title: remove all bracketed tags and all HTML comments
+      const cleanTitle = rawContent
+        .replace(/\[[a-zA-Z0-9_-]+::\s*[^\]]+\]/gi, '')
+        .replace(/\[[^\]]+\]/g, '')
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .trim();
+
       inlineTasks.push({
         id: `${filePath}#L${index + 1}`,
         filePath,
         lineIndex: index,
-        title: content.replace(/\[[^\]]+\]/g, '').trim(),
+        rawLine: line,
+        title: cleanTitle,
+        description: descMatch ? descMatch[1].trim() : '',
         status: isDone ? 'done' : 'todo',
         assignee: assigneeMatch ? assigneeMatch[1].trim() : 'human',
         due: dueMatch ? dueMatch[1].trim() : null,
         priority: priorityMatch ? priorityMatch[1].trim() : 'medium',
         project: projectName,
+        taskRef,
+        gtaskId,
         isInline: true
       });
     }

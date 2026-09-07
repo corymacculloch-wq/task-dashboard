@@ -10,7 +10,12 @@ import TaskEditModal from './components/TaskEditModal';
 import ProjectEditModal from './components/ProjectEditModal';
 import AuthModal from './components/AuthModal';
 import { AlertCircle, RefreshCw, Plus } from 'lucide-react';
-import { fetchAllTasksFromGitHub, commitFileToGitHub } from './services/githubClient';
+import {
+  fetchAllTasksFromGitHub,
+  commitFileToGitHub,
+  updateInlineTaskInFile,
+  updateInlineTaskPropertiesInFile
+} from './services/githubClient';
 import { serializeTaskToMarkdown } from './utils/vaultParserBrowser';
 
 export default function App() {
@@ -131,24 +136,37 @@ export default function App() {
     showNotification(`Updated status to "${newStatus}" (committing to GitHub...)`);
 
     try {
-      const updatedFrontmatter = {
-        ...existingTask.frontmatter,
-        status: newStatus,
-        updated: new Date().toISOString().slice(0, 10)
-      };
+      let res;
+      if (existingTask.isInline) {
+        res = await updateInlineTaskInFile(
+          authInfo.token,
+          authInfo.owner,
+          authInfo.repo,
+          existingTask.filePath,
+          existingTask.lineIndex,
+          existingTask.rawLine,
+          newStatus
+        );
+      } else {
+        const updatedFrontmatter = {
+          ...existingTask.frontmatter,
+          status: newStatus,
+          updated: new Date().toISOString().slice(0, 10)
+        };
 
-      const markdownContent = serializeTaskToMarkdown(updatedFrontmatter, existingTask.content || '');
-      const commitMsg = `Update task status "${existingTask.title}" to ${newStatus}`;
+        const markdownContent = serializeTaskToMarkdown(updatedFrontmatter, existingTask.content || '');
+        const commitMsg = `Update task status "${existingTask.title}" to ${newStatus}`;
 
-      const res = await commitFileToGitHub(
-        authInfo.token,
-        authInfo.owner,
-        authInfo.repo,
-        existingTask.filePath,
-        existingTask.sha,
-        markdownContent,
-        commitMsg
-      );
+        res = await commitFileToGitHub(
+          authInfo.token,
+          authInfo.owner,
+          authInfo.repo,
+          existingTask.filePath,
+          existingTask.sha,
+          markdownContent,
+          commitMsg
+        );
+      }
 
       // Update task sha in state
       setTasks((prev) =>
@@ -201,28 +219,41 @@ export default function App() {
     showNotification(`Updating properties for "${updates.title || existingTask.title}"...`);
 
     try {
-      const updatedFrontmatter = {
-        ...existingTask.frontmatter,
-        title: updates.title || existingTask.title,
-        priority: updates.priority || existingTask.priority,
-        assignee: updates.assignee || existingTask.assignee,
-        due: updates.due !== undefined ? updates.due : existingTask.due,
-        project: updates.project || existingTask.project,
-        updated: new Date().toISOString().slice(0, 10)
-      };
+      let res;
+      if (existingTask.isInline) {
+        res = await updateInlineTaskPropertiesInFile(
+          authInfo.token,
+          authInfo.owner,
+          authInfo.repo,
+          existingTask.filePath,
+          existingTask.lineIndex,
+          existingTask.rawLine,
+          updates
+        );
+      } else {
+        const updatedFrontmatter = {
+          ...existingTask.frontmatter,
+          title: updates.title || existingTask.title,
+          priority: updates.priority || existingTask.priority,
+          assignee: updates.assignee || existingTask.assignee,
+          due: updates.due !== undefined ? updates.due : existingTask.due,
+          project: updates.project || existingTask.project,
+          updated: new Date().toISOString().slice(0, 10)
+        };
 
-      const markdownContent = serializeTaskToMarkdown(updatedFrontmatter, updates.content || existingTask.content || '');
-      const commitMsg = `Update task properties "${updates.title || existingTask.title}"`;
+        const markdownContent = serializeTaskToMarkdown(updatedFrontmatter, updates.content || existingTask.content || '');
+        const commitMsg = `Update task properties "${updates.title || existingTask.title}"`;
 
-      const res = await commitFileToGitHub(
-        authInfo.token,
-        authInfo.owner,
-        authInfo.repo,
-        existingTask.filePath,
-        existingTask.sha,
-        markdownContent,
-        commitMsg
-      );
+        res = await commitFileToGitHub(
+          authInfo.token,
+          authInfo.owner,
+          authInfo.repo,
+          existingTask.filePath,
+          existingTask.sha,
+          markdownContent,
+          commitMsg
+        );
+      }
 
       setTasks((prev) =>
         prev.map((t) => (t.id === id ? { ...t, sha: res.sha } : t))
