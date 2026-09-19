@@ -29,6 +29,17 @@ export default function ProjectBreakdownView({
   const [globalProjectSort, setGlobalProjectSort] = useState('alphabetical');
   const [selectedProject, setSelectedProject] = useState('ALL');
   const [showGuide, setShowGuide] = useState(false);
+  const [hideCompletedProjects, setHideCompletedProjects] = useState(() => {
+    return localStorage.getItem('vault_hide_completed_projects') !== 'false';
+  });
+
+  const toggleHideCompleted = () => {
+    setHideCompletedProjects((prev) => {
+      const next = !prev;
+      localStorage.setItem('vault_hide_completed_projects', String(next));
+      return next;
+    });
+  };
 
   // Derive unique project list directly from tasks state (serverless compatible)
   const projectNames = Array.from(new Set(tasks.map((t) => t.project || 'General')));
@@ -37,12 +48,16 @@ export default function ProjectBreakdownView({
   const projects = projectNames.map((name) => {
     const projTasks = tasks.filter((t) => (t.project || 'General') === name);
     const completed = projTasks.filter((t) => t.status === 'done').length;
+    const active = projTasks.filter((t) => t.status !== 'done').length;
     return {
       name,
       total: projTasks.length,
-      completed
+      completed,
+      active
     };
   });
+
+  const completedProjectsCount = projects.filter((p) => p.total > 0 && p.active === 0).length;
 
   const toggleCollapse = (projectName) => {
     setCollapsedProjects((prev) => ({
@@ -81,8 +96,9 @@ export default function ProjectBreakdownView({
   });
 
   const displayedProjects = sortedProjects.filter((p) => {
-    if (selectedProject === 'ALL') return true;
-    return p.name === selectedProject;
+    if (selectedProject !== 'ALL') return p.name === selectedProject;
+    if (hideCompletedProjects && p.total > 0 && p.active === 0) return false;
+    return true;
   });
 
   return (
@@ -128,9 +144,30 @@ export default function ProjectBreakdownView({
               <option value="completion">Highest % Complete</option>
             </select>
           </div>
+
+          {/* Active Workspaces vs All Toggle */}
+          <button
+            type="button"
+            onClick={toggleHideCompleted}
+            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
+              hideCompletedProjects
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
+                : 'bg-[#1e1f20] border-[#3c4043] text-slate-300 hover:bg-[#2d2e30]'
+            }`}
+            title={hideCompletedProjects ? "Showing active projects only. Click to reveal completed workspaces." : "Showing all projects including completed. Click to hide completed."}
+          >
+            <span className={`w-2 h-2 rounded-full ${hideCompletedProjects ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>
+            <span>{hideCompletedProjects ? 'Active Only' : 'All Workspaces'}</span>
+            {hideCompletedProjects && completedProjectsCount > 0 && (
+              <span className="bg-emerald-500/20 text-emerald-300 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                {completedProjectsCount} done hidden
+              </span>
+            )}
+          </button>
+
           <div className="text-xs text-slate-400 font-semibold bg-[#131314] px-3 py-1.5 rounded-full border border-[#3c4043]">
             {selectedProject === 'ALL'
-              ? `${projects.length} Active Workspace Projects`
+              ? `${displayedProjects.length} ${hideCompletedProjects ? 'Active' : ''} Workspace Projects`
               : `Showing: ${selectedProject}`}
           </div>
         </div>
