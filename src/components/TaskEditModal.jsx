@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Edit2, Flame, Calendar, User, Tag, FileText, CheckSquare, CheckCircle2 } from 'lucide-react';
+import { X, Save, Edit2, Flame, Calendar, User, Tag, FileText, CheckSquare, CheckCircle2, Mail, ExternalLink } from 'lucide-react';
 
 export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSave, onConfirmPromote, existingProjects: passedProjects = ['General'] }) {
   const [title, setTitle] = useState('');
@@ -12,6 +12,9 @@ export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSav
   const [isCustomProject, setIsCustomProject] = useState(false);
   const [status, setStatus] = useState('todo');
   const [completedDate, setCompletedDate] = useState('');
+  const [emailRef, setEmailRef] = useState('');
+  const [emailSender, setEmailSender] = useState('');
+  const [emailSnippet, setEmailSnippet] = useState('');
 
   useEffect(() => {
     if (task) {
@@ -23,6 +26,9 @@ export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSav
       setProject(task.project || 'General');
       setStatus(task.status || 'todo');
       setCompletedDate(task.completed || '');
+      setEmailRef(task.email_ref || '');
+      setEmailSender(task.email_sender || '');
+      setEmailSnippet(task.email_snippet || '');
       setIsCustomProject(false);
     }
   }, [task]);
@@ -60,7 +66,10 @@ export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSav
       priority,
       due: due || null,
       assignee: assignee || null,
-      project
+      project,
+      email_ref: emailRef.trim() || null,
+      email_sender: emailSender.trim() || null,
+      email_snippet: emailSnippet.trim() || null
     };
 
     if (onSave) {
@@ -244,6 +253,61 @@ export default function TaskEditModal({ isOpen, onClose, task, onSaveTask, onSav
               </button>
             </div>
           )}
+        </div>
+
+        {/* Gmail / Email Linkage Section */}
+        <div className="bg-[#131314] p-4 rounded-2xl border border-[#3c4043] space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#ea4335] uppercase tracking-wider flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-[#ea4335]" /> Gmail Linkage
+            </span>
+            {emailRef ? (
+              <a
+                href={emailRef}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-semibold text-[#8ab4f8] hover:underline flex items-center gap-1 bg-[#8ab4f8]/10 hover:bg-[#8ab4f8]/20 px-2.5 py-1 rounded-full transition-colors border border-[#8ab4f8]/30"
+              >
+                <ExternalLink className="w-3 h-3" /> Open Thread in Gmail
+              </a>
+            ) : (
+              <span className="text-[10px] text-slate-500">Not linked to Gmail</span>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-semibold text-slate-400">Gmail Thread Permalink URL:</label>
+            <input
+              type="url"
+              placeholder="https://mail.google.com/mail/u/0/#inbox/..."
+              value={emailRef}
+              onChange={(e) => setEmailRef(e.target.value)}
+              className="w-full bg-[#1e1f20] text-slate-200 text-xs px-3 py-2 rounded-xl border border-[#3c4043] focus:outline-none focus:border-[#8ab4f8] font-mono"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-semibold text-slate-400">Sender / From:</label>
+              <input
+                type="text"
+                placeholder="e.g. John Doe <john@example.com>"
+                value={emailSender}
+                onChange={(e) => setEmailSender(e.target.value)}
+                className="w-full bg-[#1e1f20] text-slate-200 text-xs px-3 py-2 rounded-xl border border-[#3c4043] focus:outline-none focus:border-[#8ab4f8]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-semibold text-slate-400">Snippet Preview:</label>
+              <input
+                type="text"
+                placeholder="Brief email snippet or summary..."
+                value={emailSnippet}
+                onChange={(e) => setEmailSnippet(e.target.value)}
+                className="w-full bg-[#1e1f20] text-slate-200 text-xs px-3 py-2 rounded-xl border border-[#3c4043] focus:outline-none focus:border-[#8ab4f8]"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Grid Properties: Priority, Due Date, Assignee */}

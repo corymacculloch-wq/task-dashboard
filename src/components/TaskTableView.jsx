@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Flame, CheckCircle2, Circle, Bot, ExternalLink, Columns, Edit2, Check, Calendar, FileText, Hash, Folder, RotateCcw, ArrowUp, ArrowDown, ArrowUpDown, Layers, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Flame, CheckCircle2, Circle, Bot, ExternalLink, Columns, Edit2, Check, Calendar, FileText, Hash, Folder, RotateCcw, ArrowUp, ArrowDown, ArrowUpDown, Layers, ChevronDown, ChevronRight, Mail } from 'lucide-react';
 
 const AVAILABLE_COLUMNS = [
   { id: 'id', label: 'Task ID', defaultVisible: true, defaultWidth: 140 },
   { id: 'title', label: 'Task Title', defaultVisible: true, mandatory: true, defaultWidth: 280 },
   { id: 'project', label: 'Project', defaultVisible: true, defaultWidth: 140 },
+  { id: 'email', label: 'Gmail Link', defaultVisible: true, defaultWidth: 130 },
   { id: 'priority', label: 'Priority', defaultVisible: true, defaultWidth: 110 },
   { id: 'due', label: 'Due Date', defaultVisible: true, defaultWidth: 110 },
   { id: 'completed', label: 'Completed Date', defaultVisible: true, defaultWidth: 130 },
@@ -25,6 +26,7 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
   const [statusFilter, setStatusFilter] = useState('todo');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
   const [projectFilter, setProjectFilter] = useState('ALL');
+  const [sourceFilter, setSourceFilter] = useState('ALL');
   const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
 
   const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
@@ -34,7 +36,22 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
   const [visibleColumns, setVisibleColumns] = useState(() => {
     try {
       const saved = localStorage.getItem('table_columns_config');
-      return saved ? JSON.parse(saved) : AVAILABLE_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // If 'email' was omitted from previously saved config, ensure it's included
+          if (!parsed.includes('email')) {
+            const projectIdx = parsed.indexOf('project');
+            if (projectIdx !== -1) {
+              parsed.splice(projectIdx + 1, 0, 'email');
+            } else {
+              parsed.push('email');
+            }
+          }
+          return parsed;
+        }
+      }
+      return AVAILABLE_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id);
     } catch (e) {
       return AVAILABLE_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id);
     }
@@ -138,8 +155,14 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
 
     const matchPriority = priorityFilter === 'ALL' || t.priority === priorityFilter;
     const matchProject = projectFilter === 'ALL' || t.project === projectFilter;
+    const matchSource =
+      sourceFilter === 'ALL'
+        ? true
+        : sourceFilter === 'gmail'
+        ? Boolean(t.email_ref)
+        : !t.email_ref;
 
-    return matchSearch && matchStatus && matchPriority && matchProject;
+    return matchSearch && matchStatus && matchPriority && matchProject && matchSource;
   });
 
   // 2. Sort Tasks
@@ -151,7 +174,10 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
     let valA = a[key] ?? '';
     let valB = b[key] ?? '';
 
-    if (key === 'priority') {
+    if (key === 'email') {
+      valA = a.email_ref || '';
+      valB = b.email_ref || '';
+    } else if (key === 'priority') {
       const weight = { high: 3, medium: 2, low: 1 };
       valA = weight[a.priority] || 0;
       valB = weight[b.priority] || 0;
@@ -174,6 +200,7 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
   // 3. Group Tasks
   const getGroupKey = (t) => {
     if (groupBy === 'project') return t.project || 'General';
+    if (groupBy === 'source') return t.email_ref ? '✉️ Gmail Linked Tasks' : '📁 Direct Vault Tasks';
     if (groupBy === 'priority') return (t.priority || 'medium').toUpperCase();
     if (groupBy === 'status') return (t.status || 'todo').toUpperCase();
     if (groupBy === 'format') return t.isAtomic ? 'Atomic Files' : 'Inline Notes';
@@ -279,8 +306,9 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
         {/* Task Title Column */}
         {renderTd(
           'title',
-          <div className={`line-clamp-2 font-medium group-hover:text-[#8ab4f8] transition-colors ${t.status === 'done' ? 'line-through text-slate-500' : 'text-slate-100'}`} title={t.title}>
-            {t.title}
+          <div className={`line-clamp-2 font-medium group-hover:text-[#8ab4f8] transition-colors flex items-center gap-1.5 ${t.status === 'done' ? 'line-through text-slate-500' : 'text-slate-100'}`} title={t.title}>
+            {t.email_ref && <Mail className="w-3.5 h-3.5 text-[#ea4335] shrink-0" title="Linked to Gmail Thread" />}
+            <span className="truncate">{t.title}</span>
           </div>
         )}
 
@@ -290,6 +318,25 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
           <span className="px-2.5 py-0.5 rounded-full bg-[#282a2d] text-slate-300 font-medium border border-[#3c4043]" title={t.project}>
             {t.project}
           </span>
+        )}
+
+        {/* Gmail Link Column */}
+        {renderTd(
+          'email',
+          t.email_ref ? (
+            <a
+              href={t.email_ref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={t.email_sender ? `From: ${t.email_sender}${t.email_snippet ? '\n\n' + t.email_snippet : ''}` : 'Open thread in Gmail'}
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#ea4335]/15 text-[#f28b82] border border-[#ea4335]/30 hover:bg-[#ea4335]/25 transition-all"
+            >
+              <Mail className="w-3 h-3 text-[#ea4335]" /> Gmail ↗
+            </a>
+          ) : (
+            <span className="text-slate-600 text-[11px]">—</span>
+          )
         )}
 
         {/* Priority Column */}
@@ -447,6 +494,17 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
             <option value="low">Low Priority</option>
           </select>
 
+          {/* Source Filter */}
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="bg-[#282a2d] border border-[#3c4043] text-slate-200 text-xs rounded-full px-4 py-2 focus:outline-none focus:border-[#8ab4f8] cursor-pointer font-medium"
+          >
+            <option value="ALL">All Sources</option>
+            <option value="gmail">✉️ Gmail Linked</option>
+            <option value="direct">Direct Vault Tasks</option>
+          </select>
+
           {/* Group By Selector (Positioned Right) */}
           <div className="flex items-center gap-1.5 bg-[#282a2d] border border-[#3c4043] hover:border-[#5f6368] rounded-full px-3.5 py-1.5 transition-all">
             <Layers className="w-3.5 h-3.5 text-[#8ab4f8]" />
@@ -458,6 +516,7 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
             >
               <option value="none" className="bg-[#1e1f20] text-slate-200">None (Flat Table)</option>
               <option value="project" className="bg-[#1e1f20] text-slate-200">Project Workspace</option>
+              <option value="source" className="bg-[#1e1f20] text-slate-200">Source (Gmail vs Direct)</option>
               <option value="priority" className="bg-[#1e1f20] text-slate-200">Priority Level</option>
               <option value="status" className="bg-[#1e1f20] text-slate-200">Status</option>
               <option value="format" className="bg-[#1e1f20] text-slate-200">Format (Atomic vs Inline)</option>
@@ -545,6 +604,7 @@ export default function TaskTableView({ tasks, onUpdateStatus, onOpenEdit }) {
                 {renderTh('id', 'Task ID')}
                 {renderTh('title', 'Task Title')}
                 {renderTh('project', 'Project')}
+                {renderTh('email', 'Gmail Link')}
                 {renderTh('priority', 'Priority')}
                 {renderTh('due', 'Due Date')}
                 {renderTh('completed', 'Completed Date')}

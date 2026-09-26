@@ -57,7 +57,7 @@ export function parseInlineCheckboxes(text, filePath, projectName) {
   const lines = text.split(/\r?\n/);
   
   lines.forEach((line, index) => {
-    const match = line.match(/^(\s*)-\s*\[([ xX])\]\s*(.*)$/);
+    const match = line.match(/^(\s*)(?:-|\*)\s*\[([ xX])\]\s*(.*)$/);
     if (match) {
       const isDone = match[2].toLowerCase() === 'x';
       const rawContent = match[3].trim();
@@ -76,6 +76,10 @@ export function parseInlineCheckboxes(text, filePath, projectName) {
       // Parse gtask-id
       const gtaskMatch = rawContent.match(/<!--\s*gtask-id:\s*([^>\s]+)\s*-->/i);
       const gtaskId = gtaskMatch ? gtaskMatch[1].trim() : null;
+
+      // Parse email-ref
+      const emailMatch = rawContent.match(/<!--\s*email-ref:\s*([^>\s]+)\s*-->/i);
+      const emailRef = emailMatch ? emailMatch[1].trim() : null;
 
       // Clean title: remove all bracketed tags and all HTML comments
       const cleanTitle = rawContent
@@ -98,6 +102,7 @@ export function parseInlineCheckboxes(text, filePath, projectName) {
         project: projectName,
         taskRef,
         gtaskId,
+        email_ref: emailRef,
         isInline: true
       });
     }
@@ -130,7 +135,10 @@ export function parseAtomicTaskNote(filePath, content, sha) {
     created: frontmatter.created || null,
     isInline: false,
     content: body,
-    frontmatter
+    frontmatter,
+    email_ref: frontmatter.email_ref || null,
+    email_sender: frontmatter.email_sender || null,
+    email_snippet: frontmatter.email_snippet || null
   };
 }
 

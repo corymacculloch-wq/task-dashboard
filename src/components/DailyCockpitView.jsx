@@ -11,7 +11,8 @@ import {
   CalendarDays,
   XCircle,
   Folder,
-  Tag
+  Tag,
+  Mail
 } from 'lucide-react';
 
 export default function DailyCockpitView({
@@ -26,6 +27,7 @@ export default function DailyCockpitView({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterProject, setFilterProject] = useState('ALL');
   const [showCompleted, setShowCompleted] = useState(false);
+  const [filterGmailOnly, setFilterGmailOnly] = useState(false);
 
   const todayObj = new Date();
   const todayStr = todayObj.toISOString().slice(0, 10);
@@ -64,11 +66,13 @@ export default function DailyCockpitView({
   };
 
   const projects = Array.from(new Set(tasks.map((t) => t.project).filter(Boolean)));
+  const totalGmailTasks = tasks.filter((t) => t.email_ref && t.status !== 'archived').length;
 
   // Filter tasks
   const eligibleTasks = tasks.filter((t) => {
-    if (!showCompleted && t.status === 'done') return false;
+    if (!showCompleted && !filterGmailOnly && t.status === 'done') return false;
     if (t.status === 'archived') return false;
+    if (filterGmailOnly && !t.email_ref) return false;
 
     const matchesSearch =
       (t.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -104,6 +108,10 @@ export default function DailyCockpitView({
     .sort((a, b) => (a.due > b.due ? 1 : -1));
 
   const unscheduledTasks = eligibleTasks.filter((t) => t.status !== 'done' && !t.due);
+
+  const completedTasks = eligibleTasks
+    .filter((t) => t.status === 'done')
+    .sort((a, b) => ((b.completed || b.due || '') > (a.completed || a.due || '') ? 1 : -1));
 
   const handleQuickSchedule = (taskId, dateStr) => {
     if (onUpdateTask) {
@@ -147,10 +155,36 @@ export default function DailyCockpitView({
             />
             <span>Show Completed</span>
           </label>
+
+          <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none border-l border-[#3c4043] pl-3 h-9">
+            <input
+              type="checkbox"
+              checked={filterGmailOnly}
+              onChange={(e) => setFilterGmailOnly(e.target.checked)}
+              className="rounded accent-[#ea4335] w-4 h-4 cursor-pointer"
+            />
+            <span className="flex items-center gap-1">
+              <Mail className="w-3.5 h-3.5 text-[#ea4335]" /> Gmail Tasks {totalGmailTasks > 0 ? `(${totalGmailTasks})` : ''}
+            </span>
+          </label>
         </div>
 
         {/* Timeline Quick Metrics Badges */}
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {totalGmailTasks > 0 && (
+            <button
+              onClick={() => setFilterGmailOnly(!filterGmailOnly)}
+              title={filterGmailOnly ? "Showing Gmail tasks only. Click to show all." : "Click to filter Gmail tasks"}
+              className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                filterGmailOnly
+                  ? 'bg-[#ea4335] text-white border border-[#ea4335] shadow-sm shadow-[#ea4335]/30'
+                  : 'bg-[#ea4335]/15 text-[#f28b82] border border-[#ea4335]/30 hover:bg-[#ea4335]/25'
+              }`}
+            >
+              <Mail className="w-3.5 h-3.5" />
+              {totalGmailTasks} from Gmail {filterGmailOnly ? '✓' : ''}
+            </button>
+          )}
           {overdueTasks.length > 0 && (
             <span className="bg-[#f28b82]/15 text-[#f28b82] border border-[#f28b82]/30 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 animate-pulse">
               <AlertTriangle className="w-3.5 h-3.5" />
@@ -167,6 +201,24 @@ export default function DailyCockpitView({
           </span>
         </div>
       </div>
+
+      {/* Gmail Filter Active Callout */}
+      {filterGmailOnly && (
+        <div className="p-3.5 bg-[#ea4335]/10 border border-[#ea4335]/30 rounded-2xl flex items-center justify-between text-xs text-[#f28b82] animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <Mail className="w-4 h-4 text-[#ea4335]" />
+            <span>
+              Filtering by <strong>Gmail Tasks</strong> ({eligibleTasks.length} thread{eligibleTasks.length === 1 ? '' : 's'} found)
+            </span>
+          </div>
+          <button
+            onClick={() => setFilterGmailOnly(false)}
+            className="text-xs text-slate-300 hover:text-white underline cursor-pointer"
+          >
+            Show All Tasks
+          </button>
+        </div>
+      )}
 
       {/* 🚨 OVERDUE TASKS GROUP */}
       <section className="space-y-3">
@@ -325,7 +377,7 @@ export default function DailyCockpitView({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2.5">
-            {unscheduledTasks.slice(0, 20).map((task) => (
+            {(filterGmailOnly ? unscheduledTasks : unscheduledTasks.slice(0, 20)).map((task) => (
               <TimelineTaskCard
                 key={task.id}
                 task={task}
@@ -337,7 +389,7 @@ export default function DailyCockpitView({
                 formatRelativeDate={formatRelativeDate}
               />
             ))}
-            {unscheduledTasks.length > 20 && (
+            {!filterGmailOnly && unscheduledTasks.length > 20 && (
               <div className="p-3 text-center text-xs text-slate-400 bg-[#131314] rounded-2xl border border-[#3c4043]">
                 + {unscheduledTasks.length - 20} more unscheduled items in backlog
               </div>
@@ -345,6 +397,42 @@ export default function DailyCockpitView({
           </div>
         )}
       </section>
+
+      {/* ✅ COMPLETED TASKS GROUP */}
+      {(showCompleted || (filterGmailOnly && completedTasks.length > 0)) && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between border-b border-[#3c4043] pb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-[#81c995]/20 flex items-center justify-center">
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#81c995]" />
+              </div>
+              <h3 className="text-sm font-bold text-[#81c995]">
+                {filterGmailOnly ? `Completed Gmail Tasks (${completedTasks.length})` : `Completed Tasks (${completedTasks.length})`}
+              </h3>
+            </div>
+          </div>
+
+          {completedTasks.length === 0 ? (
+            <div className="p-4 bg-[#131314] border border-[#3c4043] rounded-2xl text-xs text-slate-400">
+              No completed tasks matching current filters.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5">
+              {completedTasks.map((task) => (
+                <TimelineTaskCard
+                  key={task.id}
+                  task={task}
+                  onUpdateStatus={onUpdateStatus}
+                  onUpdateTask={onUpdateTask}
+                  onOpenEdit={handleEdit}
+                  onQuickSchedule={handleQuickSchedule}
+                  formatRelativeDate={formatRelativeDate}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -435,10 +523,29 @@ function TimelineTaskCard({
                 Agent Task
               </span>
             )}
+            {task.email_ref && (
+              <a
+                href={task.email_ref}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title={task.email_sender ? `From: ${task.email_sender}${task.email_snippet ? '\n\n' + task.email_snippet : ''}` : 'Open email thread in Gmail'}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#f28b82] bg-[#ea4335]/15 hover:bg-[#ea4335]/25 border border-[#ea4335]/30 px-2.5 py-0.5 rounded-full transition-colors"
+              >
+                <Mail className="w-3 h-3 text-[#ea4335]" /> Gmail ↗
+              </a>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
-            <span className="font-medium text-slate-300">{task.project}</span>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 mt-1">
+            <span className="font-medium text-slate-300 bg-[#282a2d] px-2 py-0.5 rounded-md border border-[#3c4043]/50">
+              📁 {task.project}
+            </span>
+            {task.email_sender && (
+              <span className="text-slate-300 truncate max-w-[220px]" title={task.email_sender}>
+                • From: {task.email_sender}
+              </span>
+            )}
             {task.due && (
               <span className={`font-semibold ${isOverdue ? 'text-[#f28b82]' : 'text-slate-400'}`}>
                 • {formatRelativeDate(task.due)} ({task.due})

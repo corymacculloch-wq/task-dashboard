@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Plus, AlertCircle, CheckCircle, Mail } from 'lucide-react';
 
 const ACTION_VERBS = [
   'Call', 'Email', 'Download', 'Review', 'Inspect', 'Transfer',
@@ -17,11 +17,15 @@ export default function QuickTaskModal({ isOpen, onClose, onCreateTask, initialP
   const [due, setDue] = useState('');
   const [assignee, setAssignee] = useState('');
   const [isAtomic, setIsAtomic] = useState(true);
+  const [emailRef, setEmailRef] = useState('');
+  const [emailSender, setEmailSender] = useState('');
 
   React.useEffect(() => {
     if (isOpen) {
       setProject(initialProject || 'General');
       setIsCustomProject(false);
+      setEmailRef('');
+      setEmailSender('');
       const names = [...passedProjects];
       if (!names.includes('General')) names.unshift('General');
       if (initialProject && !names.includes(initialProject)) names.push(initialProject);
@@ -46,11 +50,15 @@ export default function QuickTaskModal({ isOpen, onClose, onCreateTask, initialP
       priority,
       due: due || null,
       assignee: assignee.trim().toLowerCase() || null,
-      isAtomic
+      isAtomic,
+      email_ref: emailRef.trim() || null,
+      email_sender: emailSender.trim() || null
     });
 
     setTitle('');
     setDescription('');
+    setEmailRef('');
+    setEmailSender('');
     onClose();
   };
 
@@ -189,6 +197,36 @@ export default function QuickTaskModal({ isOpen, onClose, onCreateTask, initialP
                 onChange={(e) => setAssignee(e.target.value)}
                 className="w-full bg-[#131314] border border-[#3c4043] text-slate-100 text-sm rounded-2xl px-4 py-2 focus:outline-none focus:border-[#8ab4f8]"
               />
+            </div>
+          </div>
+
+          {/* Gmail Linkage (Optional) */}
+          <div className="p-3.5 bg-[#18191a] border border-[#3c4043] rounded-2xl space-y-2.5">
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+              <Mail className="w-3.5 h-3.5 text-[#ea4335]" />
+              <span>Gmail Linkage (Optional)</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Thread URL / Link</label>
+                <input
+                  type="url"
+                  placeholder="https://mail.google.com/..."
+                  value={emailRef}
+                  onChange={(e) => setEmailRef(e.target.value)}
+                  className="w-full bg-[#131314] border border-[#3c4043] text-slate-100 text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#8ab4f8]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Sender Name / Email</label>
+                <input
+                  type="text"
+                  placeholder="e.g. John Doe <john@domain.com>"
+                  value={emailSender}
+                  onChange={(e) => setEmailSender(e.target.value)}
+                  className="w-full bg-[#131314] border border-[#3c4043] text-slate-100 text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#8ab4f8]"
+                />
+              </div>
             </div>
           </div>
 

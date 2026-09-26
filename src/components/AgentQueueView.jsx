@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, ShieldCheck, Play, Sparkles, Tag, CheckCircle2, FileText, ArrowRight } from 'lucide-react';
+import { Bot, ShieldCheck, Play, Sparkles, Tag, CheckCircle2, FileText, ArrowRight, Mail } from 'lucide-react';
 
 export default function AgentQueueView({ tasks, onApproveAgent }) {
   const agentCandidateTasks = tasks.filter(
@@ -102,10 +102,30 @@ export default function AgentQueueView({ tasks, onApproveAgent }) {
                     </span>
                     <span className="text-xs text-slate-400 font-medium">Priority: <strong className="text-slate-200">{task.priority}</strong></span>
                     {task.due && <span className="text-xs text-slate-400">• Due: {task.due}</span>}
+                    {task.email_ref && (
+                      <a
+                        href={task.email_ref}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#ea4335]/15 text-[#f28b82] border border-[#ea4335]/30 hover:bg-[#ea4335]/25 hover:border-[#ea4335] transition-all"
+                        title={task.email_sender ? `From: ${task.email_sender}` : 'Open Gmail Thread'}
+                      >
+                        <Mail className="w-3 h-3 text-[#ea4335]" />
+                        <span>Gmail ↗</span>
+                      </a>
+                    )}
+                    {task.email_sender && (
+                      <span className="text-xs text-slate-400">• From: <strong className="text-slate-300">{task.email_sender}</strong></span>
+                    )}
                   </div>
                   <h4 className="text-base font-semibold text-slate-100">{task.title}</h4>
                   {task.description && (
                     <p className="text-xs text-slate-400 line-clamp-2">{task.description}</p>
+                  )}
+                  {task.email_snippet && (
+                    <p className="text-[11px] text-slate-400 italic line-clamp-1 bg-[#1e1f20] px-2.5 py-1 rounded-lg border border-[#3c4043]/50">
+                      "{task.email_snippet}"
+                    </p>
                   )}
                 </div>
 

@@ -43,7 +43,9 @@ export default function Navbar({
   onSignOut,
   authInfo,
   isDesktopMode,
-  onToggleDesktopMode
+  onToggleDesktopMode,
+  syncState,
+  onRetrySync
 }) {
   const [isUndoOpen, setIsUndoOpen] = useState(false);
   const undoRef = useRef(null);
@@ -89,96 +91,111 @@ export default function Navbar({
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-[#1e1f20] border-b border-[#2d2f31] px-4 sm:px-6 py-2.5 shadow-md w-full max-w-full">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-3 relative">
-        {/* Left Side: Brand Logo + Mobile Controls */}
-        <div className="flex items-center justify-between gap-2 w-full md:w-auto">
-          <div className="flex items-center gap-2">
-            <div
-              title="Task Cockpit — Real-time Obsidian Vault Sync Engine"
-              className="w-8 h-8 rounded-xl bg-[#282a2d] border border-[#3c4043] flex items-center justify-center shadow-sm shrink-0"
-            >
-              <CheckSquare className="w-4 h-4 text-[#8ab4f8]" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
+    <header className="sticky top-0 z-30 bg-[#1e1f20]/95 backdrop-blur-md border-b border-[#3c4043] transition-all">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between py-2.5 gap-3 relative">
+          {/* Left Side: Brand Logo + Sync State + Mobile Controls */}
+          <div className="flex items-center justify-between gap-2 w-full md:w-auto">
+            <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setActiveTab('cockpit')}>
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#8ab4f8] to-indigo-500 flex items-center justify-center text-[#041e49] shadow-md shadow-[#8ab4f8]/25">
+                <CheckSquare className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <div className="flex items-center gap-2">
                 <span className="text-base font-bold text-slate-100 tracking-tight font-sans">
                   Task <span className="font-normal text-slate-300">Cockpit</span>
                 </span>
-                <span
-                  title={isWsConnected ? 'Vault Synced' : 'Connecting...'}
-                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#81c995]/10 text-[#81c995] border border-[#81c995]/20"
-                >
-                  <Radio className="w-2.5 h-2.5 text-[#81c995] animate-pulse" />
-                  {taskCount}
-                </span>
+
+                {syncState?.status === 'syncing' ? (
+                  <span
+                    title="Committing and pushing vault changes to GitHub..."
+                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#fdd663]/10 text-[#fdd663] border border-[#fdd663]/30 animate-pulse"
+                  >
+                    <Radio className="w-2.5 h-2.5 text-[#fdd663]" />
+                    Syncing...
+                  </span>
+                ) : syncState?.status === 'error' ? (
+                  <button
+                    onClick={onRetrySync}
+                    title={`Git push failed: ${syncState.error}. Click to retry.`}
+                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-[#f28b82]/20 text-[#f28b82] border border-[#f28b82]/40 hover:bg-[#f28b82]/30 cursor-pointer transition-colors"
+                  >
+                    ⚠️ Push Failed (Retry)
+                  </button>
+                ) : (
+                  <span
+                    title={syncState?.lastSync ? `Git Synced (${syncState.lastSync})` : (isWsConnected ? 'Vault Synced' : 'Connecting...')}
+                    className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#81c995]/10 text-[#81c995] border border-[#81c995]/20"
+                  >
+                    <Radio className="w-2.5 h-2.5 text-[#81c995] animate-pulse" />
+                    {taskCount}
+                  </span>
+                )}
               </div>
+            </div>
+
+            {/* Mobile Quick Action Buttons */}
+            <div className="flex items-center gap-2 md:hidden">
+              <button
+                onClick={onToggleDesktopMode}
+                title={isDesktopMode ? 'Switch to Fluid Mobile View' : 'Switch to Desktop Scaling View'}
+                className="p-1.5 rounded-xl bg-[#282a2d] border border-[#3c4043] text-slate-300 hover:text-slate-100 transition-all cursor-pointer"
+              >
+                {isDesktopMode ? <Monitor className="w-3.5 h-3.5 text-indigo-400" /> : <Smartphone className="w-3.5 h-3.5" />}
+              </button>
+
+              {/* Mobile Undo Button */}
+              <button
+                onClick={() => setIsUndoOpen(!isUndoOpen)}
+                title="Undo History: View and revert recorded actions"
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                  undoHistory.length > 0
+                    ? 'bg-[#282a2d] text-amber-300 border-amber-500/50 shadow-sm'
+                    : 'bg-[#282a2d] text-slate-300 border-[#3c4043]'
+                }`}
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[11px]">Undo</span>
+                {undoHistory.length > 0 && (
+                  <span className="bg-amber-400/20 text-amber-300 text-[10px] font-bold px-1 rounded-full">
+                    {undoHistory.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Mobile + Task Button */}
+              <button
+                onClick={onOpenQuickTask}
+                title="Create new task"
+                className="flex items-center gap-1 px-3 py-1 rounded-full bg-[#8ab4f8] hover:bg-[#a8c7fa] text-[#0f172a] text-xs font-bold shadow-md transition-all cursor-pointer shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Task</span>
+              </button>
             </div>
           </div>
 
-          {/* Mobile Quick Action Buttons */}
-          <div className="flex items-center gap-2 md:hidden">
-            <button
-              onClick={onToggleDesktopMode}
-              title={isDesktopMode ? 'Switch to Fluid Mobile View' : 'Switch to Desktop Scaling View'}
-              className="p-1.5 rounded-xl bg-[#282a2d] border border-[#3c4043] text-slate-300 hover:text-slate-100 transition-all cursor-pointer"
-            >
-              {isDesktopMode ? <Monitor className="w-3.5 h-3.5 text-indigo-400" /> : <Smartphone className="w-3.5 h-3.5" />}
-            </button>
-
-            {/* Mobile Undo Button */}
-            <button
-              onClick={() => setIsUndoOpen(!isUndoOpen)}
-              title="Undo History: View and revert recorded actions"
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
-                undoHistory.length > 0
-                  ? 'bg-[#282a2d] text-amber-300 border-amber-500/50 shadow-sm'
-                  : 'bg-[#282a2d] text-slate-300 border-[#3c4043]'
-              }`}
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[11px]">Undo</span>
-              {undoHistory.length > 0 && (
-                <span className="bg-amber-400/20 text-amber-300 text-[10px] font-bold px-1 rounded-full">
-                  {undoHistory.length}
-                </span>
-              )}
-            </button>
-
-            {/* Mobile + Task Button */}
-            <button
-              onClick={onOpenQuickTask}
-              title="Create new task"
-              className="flex items-center gap-1 px-3 py-1 rounded-full bg-[#8ab4f8] hover:bg-[#a8c7fa] text-[#0f172a] text-xs font-bold shadow-md transition-all cursor-pointer shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Task</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Center: Navigation Tabs (Scrollable on Mobile) */}
-        <nav className="flex items-center gap-1.5 bg-[#131314] p-1 rounded-full border border-[#3c4043] overflow-x-auto max-w-full w-full md:w-auto shrink-0 scrollbar-none">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                title={tab.tooltip}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all duration-150 cursor-pointer whitespace-nowrap shrink-0 ${
-                  isActive
-                    ? 'bg-[#1a73e8] text-white shadow-md font-bold'
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-[#282a2d]'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+          {/* Center: Navigation Tabs (Scrollable on Mobile) */}
+          <nav className="flex items-center gap-1.5 bg-[#131314] p-1 rounded-full border border-[#3c4043] overflow-x-auto max-w-full w-full md:w-auto shrink-0 scrollbar-none">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  title={tab.tooltip}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all duration-150 cursor-pointer whitespace-nowrap shrink-0 ${
+                    isActive
+                      ? 'bg-[#1a73e8] text-white shadow-md font-bold'
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-[#282a2d]'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
 
         {/* Right Side on Desktop: Controls (Desktop Toggle + Undo Button + Sign Out + Far Right + Task Pill) */}
         <div className="hidden md:flex items-center gap-2 relative">
@@ -329,7 +346,7 @@ export default function Navbar({
           {authInfo && (
             <button
               onClick={onSignOut}
-              title={`Connected to ${authInfo.owner}/${authInfo.repo}. Click to Sign Out.`}
+              title={`Connected to ${authInfo?.owner || ''}/${authInfo?.repo || ''}. Click to Sign Out.`}
               className="p-1.5 rounded-xl bg-[#282a2d] border border-[#3c4043] text-slate-300 hover:text-rose-300 transition-all cursor-pointer shrink-0"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -347,6 +364,7 @@ export default function Navbar({
           </button>
         </div>
       </div>
-    </header>
-  );
+    </div>
+  </header>
+);
 }

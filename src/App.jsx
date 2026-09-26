@@ -23,6 +23,7 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState(null);
+  const [syncState, setSyncState] = useState({ status: 'synced', lastSync: null, error: null });
 
   // Authentication State
   const [authInfo, setAuthInfo] = useState(() => {
@@ -31,6 +32,10 @@ export default function App() {
     const repo = localStorage.getItem('vault_github_repo') || 'Vault';
     return token ? { token, owner, repo } : null;
   });
+
+  // Detect if running against local Express backend server (localhost or 127.0.0.1)
+  const isLocalServer = typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
   // Desktop Scaling Mode State
   const [isDesktopMode, setIsDesktopMode] = useState(() => {
@@ -71,7 +76,7 @@ export default function App() {
     setIsQuickTaskOpen(true);
   };
 
-  // Fetch tasks from GitHub REST API
+  // Fetch tasks from GitHub REST API (cloud fallback)
   const fetchTasksFromGitHub = async () => {
     if (!authInfo?.token) return;
     setIsLoading(true);
@@ -87,11 +92,55 @@ export default function App() {
     }
   };
 
+  // Setup data source: Local Express API + WebSocket OR GitHub REST API
   useEffect(() => {
-    if (authInfo?.token) {
+    if (isLocalServer) {
+      setIsLoading(true);
+      fetch('/api/sync-status')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.status) setSyncState(data);
+        })
+        .catch(() => {});
+
+      fetch('/api/tasks?includeArchive=true')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.tasks) {
+            setTasks(data.tasks);
+          }
+        })
+        .catch((err) => {
+          console.error('Error fetching tasks from local server:', err);
+          setFetchError(err.message);
+        })
+        .finally(() => setIsLoading(false));
+
+      // Connect WebSocket for real-time live sync
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'VAULT_UPDATED' && payload.tasks) {
+            setTasks(payload.tasks);
+          } else if (payload.type === 'SYNC_STATUS' && payload.syncState) {
+            setSyncState(payload.syncState);
+          }
+        } catch (e) {
+          console.error('WebSocket parse error:', e);
+        }
+      };
+
+      return () => {
+        ws.close();
+      };
+    } else if (authInfo?.token) {
       fetchTasksFromGitHub();
     }
-  }, [authInfo]);
+  }, [authInfo, isLocalServer]);
 
   useEffect(() => {
     try {
@@ -132,6 +181,20 @@ export default function App() {
     setTasks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
     );
+
+    if (isLocalServer) {
+      showNotification(`Updated status to "${newStatus}" (Git sync queued)`);
+      try {
+        await fetch('/api/tasks/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, updates: { status: newStatus } })
+        });
+      } catch (err) {
+        showNotification(`Error updating status: ${err.message}`);
+      }
+      return;
+    }
 
     showNotification(`Updated status to "${newStatus}" (committing to GitHub...)`);
 
@@ -215,6 +278,20 @@ export default function App() {
     setTasks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
     );
+
+    if (isLocalServer) {
+      showNotification(`Updated properties for "${updates.title || existingTask.title}" (Git sync queued)`);
+      try {
+        await fetch('/api/tasks/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, updates })
+        });
+      } catch (err) {
+        showNotification(`Error updating task: ${err.message}`);
+      }
+      return;
+    }
 
     showNotification(`Updating properties for "${updates.title || existingTask.title}"...`);
 
@@ -328,8 +405,37 @@ export default function App() {
       assignee: newTaskData.assignee || 'human',
       due: newTaskData.due || '',
       project: projectName,
+      email_ref: newTaskData.email_ref || null,
+      email_sender: newTaskData.email_sender || null,
       created: new Date().toISOString().slice(0, 10)
     };
+
+    if (isLocalServer) {
+      showNotification(`Creating task "${newTaskData.title}"...`);
+      try {
+        const res = await fetch('/api/tasks/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: newTaskData.title,
+            description: newTaskData.description,
+            project: projectName,
+            priority: newTaskData.priority || 'medium',
+            due: newTaskData.due || null,
+            assignee: newTaskData.assignee || 'human',
+            isAtomic: newTaskData.isAtomic !== undefined ? newTaskData.isAtomic : true,
+            email_ref: newTaskData.email_ref || null,
+            email_sender: newTaskData.email_sender || null
+          })
+        });
+        if (res.ok) {
+          showNotification(`Created task "${newTaskData.title}" (Git sync queued)`);
+        }
+      } catch (err) {
+        showNotification(`Error creating task: ${err.message}`);
+      }
+      return;
+    }
 
     const markdownContent = serializeTaskToMarkdown(frontmatter, newTaskData.description || '* Task created via Vault Task Cockpit.');
 
@@ -362,8 +468,28 @@ export default function App() {
     }
   };
 
-  // Render Auth Modal if not authenticated
-  if (!authInfo) {
+  const handleRetrySync = async () => {
+    if (!isLocalServer) return;
+    setSyncState((prev) => ({ ...prev, status: 'syncing' }));
+    try {
+      const res = await fetch('/api/sync-vault/retry', { method: 'POST' });
+      const data = await res.json();
+      if (data.syncState) {
+        setSyncState(data.syncState);
+        if (data.syncState.status === 'error') {
+          showNotification(`Sync retry failed: ${data.syncState.error}`);
+        } else {
+          showNotification('Vault successfully pushed to Git!');
+        }
+      }
+    } catch (err) {
+      setSyncState((prev) => ({ ...prev, status: 'error', error: err.message }));
+      showNotification(`Sync retry failed: ${err.message}`);
+    }
+  };
+
+  // Render Auth Modal if not running locally and not authenticated with GitHub
+  if (!isLocalServer && !authInfo) {
     return <AuthModal onAuthenticate={setAuthInfo} />;
   }
 
@@ -389,6 +515,8 @@ export default function App() {
         authInfo={authInfo}
         isDesktopMode={isDesktopMode}
         onToggleDesktopMode={handleToggleDesktopMode}
+        syncState={syncState}
+        onRetrySync={handleRetrySync}
       />
 
       {/* Main View Area */}
@@ -404,7 +532,11 @@ export default function App() {
           <div className="mb-4 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-between text-indigo-300 text-sm animate-pulse">
             <div className="flex items-center gap-2">
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Fetching vault tasks from GitHub ({authInfo.owner}/{authInfo.repo})...</span>
+              <span>
+                {isLocalServer
+                  ? 'Fetching tasks from local vault...'
+                  : `Fetching vault tasks from GitHub (${authInfo?.owner || ''}/${authInfo?.repo || ''})...`}
+              </span>
             </div>
           </div>
         )}

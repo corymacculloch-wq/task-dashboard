@@ -11,7 +11,9 @@ import {
   ArrowUpDown,
   Info,
   AlertCircle,
-  Folder
+  Folder,
+  Mail,
+  ExternalLink
 } from 'lucide-react';
 
 export default function ProjectBreakdownView({
@@ -29,16 +31,32 @@ export default function ProjectBreakdownView({
   const [globalProjectSort, setGlobalProjectSort] = useState('alphabetical');
   const [selectedProject, setSelectedProject] = useState('ALL');
   const [showGuide, setShowGuide] = useState(false);
-  const [hideCompletedProjects, setHideCompletedProjects] = useState(() => {
-    return localStorage.getItem('vault_hide_completed_projects') !== 'false';
-  });
 
-  const toggleHideCompleted = () => {
-    setHideCompletedProjects((prev) => {
-      const next = !prev;
-      localStorage.setItem('vault_hide_completed_projects', String(next));
-      return next;
-    });
+  const [projectCorrespondence, setProjectCorrespondence] = useState({});
+  const [loadingCorresp, setLoadingCorresp] = useState({});
+  const [expandedCorresp, setExpandedCorresp] = useState({});
+
+  const toggleCorresp = async (projectName) => {
+    setExpandedCorresp((prev) => ({ ...prev, [projectName]: !prev[projectName] }));
+    if (!projectCorrespondence[projectName]) {
+      setLoadingCorresp((prev) => ({ ...prev, [projectName]: true }));
+      try {
+        const url = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? `/api/projects/${encodeURIComponent(projectName)}/correspondence`
+          : `http://localhost:3001/api/projects/${encodeURIComponent(projectName)}/correspondence`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            setProjectCorrespondence((prev) => ({ ...prev, [projectName]: data.correspondence }));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch correspondence:', err);
+      } finally {
+        setLoadingCorresp((prev) => ({ ...prev, [projectName]: false }));
+      }
+    }
   };
 
   // Derive unique project list directly from tasks state (serverless compatible)
@@ -48,16 +66,14 @@ export default function ProjectBreakdownView({
   const projects = projectNames.map((name) => {
     const projTasks = tasks.filter((t) => (t.project || 'General') === name);
     const completed = projTasks.filter((t) => t.status === 'done').length;
-    const active = projTasks.filter((t) => t.status !== 'done').length;
+    const emailTasksCount = projTasks.filter((t) => t.email_ref).length;
     return {
       name,
       total: projTasks.length,
       completed,
-      active
+      emailTasksCount
     };
   });
-
-  const completedProjectsCount = projects.filter((p) => p.total > 0 && p.active === 0).length;
 
   const toggleCollapse = (projectName) => {
     setCollapsedProjects((prev) => ({
@@ -96,9 +112,8 @@ export default function ProjectBreakdownView({
   });
 
   const displayedProjects = sortedProjects.filter((p) => {
-    if (selectedProject !== 'ALL') return p.name === selectedProject;
-    if (hideCompletedProjects && p.total > 0 && p.active === 0) return false;
-    return true;
+    if (selectedProject === 'ALL') return true;
+    return p.name === selectedProject;
   });
 
   return (
@@ -144,30 +159,9 @@ export default function ProjectBreakdownView({
               <option value="completion">Highest % Complete</option>
             </select>
           </div>
-
-          {/* Active Workspaces vs All Toggle */}
-          <button
-            type="button"
-            onClick={toggleHideCompleted}
-            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
-              hideCompletedProjects
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
-                : 'bg-[#1e1f20] border-[#3c4043] text-slate-300 hover:bg-[#2d2e30]'
-            }`}
-            title={hideCompletedProjects ? "Showing active projects only. Click to reveal completed workspaces." : "Showing all projects including completed. Click to hide completed."}
-          >
-            <span className={`w-2 h-2 rounded-full ${hideCompletedProjects ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>
-            <span>{hideCompletedProjects ? 'Active Only' : 'All Workspaces'}</span>
-            {hideCompletedProjects && completedProjectsCount > 0 && (
-              <span className="bg-emerald-500/20 text-emerald-300 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                {completedProjectsCount} done hidden
-              </span>
-            )}
-          </button>
-
           <div className="text-xs text-slate-400 font-semibold bg-[#131314] px-3 py-1.5 rounded-full border border-[#3c4043]">
             {selectedProject === 'ALL'
-              ? `${displayedProjects.length} ${hideCompletedProjects ? 'Active' : ''} Workspace Projects`
+              ? `${projects.length} Active Workspace Projects`
               : `Showing: ${selectedProject}`}
           </div>
         </div>
@@ -231,6 +225,7 @@ export default function ProjectBreakdownView({
             if (currentFilter === 'high') return t.priority === 'high';
             if (currentFilter === 'due') return !!t.due;
             if (currentFilter === 'completed') return t.status === 'done';
+            if (currentFilter === 'gmail') return !!t.email_ref;
             return true;
           });
 
@@ -320,6 +315,11 @@ export default function ProjectBreakdownView({
                         <Flame className="w-3.5 h-3.5" /> {proj.highPriority} High
                       </span>
                     )}
+                    {proj.emailTasksCount > 0 && (
+                      <span className="flex items-center gap-1 text-[#f28b82] font-semibold bg-[#ea4335]/15 border border-[#ea4335]/30 px-2 py-0.5 rounded-full text-[10px]">
+                        <Mail className="w-3 h-3 text-[#ea4335]" /> {proj.emailTasksCount} from Gmail
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -338,6 +338,7 @@ export default function ProjectBreakdownView({
                         >
                           <option value="all">All Tasks</option>
                           <option value="active">Active Only</option>
+                          <option value="gmail">Gmail Linked ✉️</option>
                           <option value="completed">Done / Completed ✓</option>
                           <option value="high">High Priority 🔥</option>
                           <option value="due">Due Date Assigned</option>
@@ -398,6 +399,18 @@ export default function ProjectBreakdownView({
                                   {t.due}
                                 </span>
                               )}
+                              {t.email_ref && (
+                                <a
+                                  href={t.email_ref}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={t.email_sender ? `From: ${t.email_sender}` : 'Open email thread in Gmail'}
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#f28b82] bg-[#ea4335]/15 hover:bg-[#ea4335]/25 border border-[#ea4335]/30 px-1.5 py-0.2 rounded-full transition-colors"
+                                >
+                                  <Mail className="w-2.5 h-2.5 text-[#ea4335]" /> Gmail ↗
+                                </a>
+                              )}
                             </div>
 
                             <button
@@ -417,6 +430,101 @@ export default function ProjectBreakdownView({
                           </div>
                         ))
                       )}
+                    </div>
+
+                    {/* Associated Email Correspondence Section & Timeline */}
+                    <div className="mt-3 pt-3 border-t border-[#3c4043]/50">
+                      {(() => {
+                        const correspList = projectCorrespondence[proj.name] || [];
+                        let stalenessBadge = null;
+                        if (correspList.length > 0) {
+                          const dates = correspList.map((c) => new Date(c.date)).filter((d) => !isNaN(d.getTime()));
+                          if (dates.length > 0) {
+                            const latestDate = new Date(Math.max(...dates));
+                            const daysSince = Math.floor((Date.now() - latestDate.getTime()) / (1000 * 60 * 60 * 24));
+                            if (daysSince > 30) {
+                              stalenessBadge = (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#fdd663]/15 text-[#fdd663] border border-[#fdd663]/30">
+                                  ⏳ Stale ({daysSince}d)
+                                </span>
+                              );
+                            } else {
+                              stalenessBadge = (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#81c995]/15 text-[#81c995] border border-[#81c995]/30">
+                                  🟢 Active ({daysSince === 0 ? 'Today' : `${daysSince}d ago`})
+                                </span>
+                              );
+                            }
+                          }
+                        }
+
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => toggleCorresp(proj.name)}
+                              className="flex items-center justify-between w-full text-[11px] font-semibold text-slate-400 hover:text-[#8ab4f8] transition-colors cursor-pointer"
+                            >
+                              <span className="flex items-center gap-2">
+                                <Mail className="w-3.5 h-3.5 text-[#8ab4f8]" />
+                                <span>Email Timeline ({correspList.length})</span>
+                                {stalenessBadge}
+                              </span>
+                              {expandedCorresp[proj.name] ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            {expandedCorresp[proj.name] && (
+                              <div className="mt-2 space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {loadingCorresp[proj.name] ? (
+                                  <div className="text-center py-2 text-[11px] text-slate-500 italic">
+                                    Loading email correspondence...
+                                  </div>
+                                ) : correspList.length === 0 ? (
+                                  <div className="text-center py-2.5 text-[11px] text-slate-500 italic bg-[#131314]/40 rounded-xl">
+                                    No correspondence logged under ## Correspondence in project.md
+                                  </div>
+                                ) : (
+                                  correspList.map((item, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="p-2.5 bg-[#131314] rounded-xl border border-[#3c4043]/40 flex items-center justify-between gap-3 text-xs hover:border-[#8ab4f8]/50 transition-all"
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <a
+                                          href={item.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs text-[#8ab4f8] hover:underline font-semibold truncate block"
+                                        >
+                                          {item.subject}
+                                        </a>
+                                        <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-1">
+                                          <span className="font-mono bg-[#1e1f20] px-1.5 py-0.5 rounded text-slate-300">{item.date}</span>
+                                          <span className="truncate">From: <strong className="text-slate-200">{item.sender}</strong></span>
+                                        </div>
+                                      </div>
+                                      <a
+                                        href={item.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-2 py-1 rounded-lg text-[10px] font-semibold text-[#8ab4f8] bg-[#8ab4f8]/10 hover:bg-[#8ab4f8]/20 border border-[#8ab4f8]/30 flex items-center gap-1 shrink-0"
+                                        title="Open email in Gmail"
+                                      >
+                                        <span>Gmail</span>
+                                        <ExternalLink className="w-2.5 h-2.5" />
+                                      </a>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </>
                 )}

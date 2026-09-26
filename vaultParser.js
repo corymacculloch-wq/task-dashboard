@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const VAULT_ROOT = process.env.VAULT_ROOT ? path.resolve(process.env.VAULT_ROOT) : path.resolve('C:/Users/corym/Vault');
+const __filename = fileURLToPath(import.meta.url);
+const SCRIPT_DIR = path.dirname(__filename);
+const VAULT_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
 const ACTIVE_PROJECTS_DIR = path.join(VAULT_ROOT, '1.active_projects');
 const ARCHIVE_DIR = path.join(VAULT_ROOT, '1.records', 'Archive', 'Tasks');
 const DASHBOARD_MD_PATH = path.join(ACTIVE_PROJECTS_DIR, 'dashboard.md');
@@ -65,21 +68,28 @@ function stringifyYamlFrontmatter(obj) {
   return yaml;
 }
 
+// Utility to recursively find files in directory
 function getFilesRecursively(dir, fileList = []) {
   if (!fs.existsSync(dir)) return fileList;
   const files = fs.readdirSync(dir);
   for (const file of files) {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
-    if (stat.isDirectory()) {
-      getFilesRecursively(filePath, fileList);
-    } else if (file.endsWith('.md')) {
-      fileList.push(filePath);
+    if (file.startsWith('.') || file === 'node_modules' || file === '__pycache__' || file === 'venv') {
+      continue;
     }
+    const filePath = path.join(dir, file);
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory()) {
+        getFilesRecursively(filePath, fileList);
+      } else if (file.endsWith('.md')) {
+        fileList.push(filePath);
+      }
+    } catch (e) {}
   }
   return fileList;
 }
 
+// Parse YAML frontmatter and body
 function parseMarkdownFile(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
   const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---/;
@@ -97,6 +107,7 @@ function parseMarkdownFile(filePath) {
   return { frontmatter: null, body: content, rawContent: content };
 }
 
+// Extract inline tasks matching `- [ ] Task description [priority:: high] [due:: YYYY-MM-DD] [assignee:: cory]`
 function parseInlineTasks(filePath, project) {
   const content = fs.readFileSync(filePath, 'utf8');
   const lines = content.split(/\r?\n/);
@@ -122,14 +133,6 @@ function parseInlineTasks(filePath, project) {
       const assigneeMatch = rawText.match(/\[assignee::\s*([^\]]+)\]/i);
       if (assigneeMatch) assignee = assigneeMatch[1].trim().toLowerCase();
 
-      let description = '';
-      const descMatch = rawText.match(/\[description::\s*([^\]]+)\]/i);
-      if (descMatch) description = descMatch[1].trim();
-
-      let completed = null;
-      const completedMatch = rawText.match(/\[completed::\s*([^\]]+)\]/i);
-      if (completedMatch) completed = completedMatch[1].trim();
-
       let taskRef = null;
       const refMatch = rawText.match(/<!--\s*task-ref:\s*([^>\s]+)\s*-->/i);
       if (refMatch) taskRef = refMatch[1];
@@ -138,24 +141,17 @@ function parseInlineTasks(filePath, project) {
       const gtaskMatch = rawText.match(/<!--\s*gtask-id:\s*([^>\s]+)\s*-->/i);
       if (gtaskMatch) gtaskId = gtaskMatch[1];
 
-      let projectOverride = null;
-      const projectMatch = rawText.match(/\[project::\s*([^\]]+)\]/i);
-      if (projectMatch) projectOverride = projectMatch[1].trim();
-
-      let projectVal = projectOverride || project || path.basename(path.dirname(filePath));
-      if (['CoworkMemory', 'cowork-memory-backup', 'KB Business', 'Kinbots Development'].includes(projectVal)) {
-        projectVal = 'ACTIVE_KINBOTS';
-      }
+      let emailRef = null;
+      const emailMatch = rawText.match(/<!--\s*email-ref:\s*([^>\s]+)\s*-->/i);
+      if (emailMatch) emailRef = emailMatch[1];
 
       let cleanTitle = rawText
         .replace(/\[priority::\s*[^\]]+\]/gi, '')
         .replace(/\[due::\s*[^\]]+\]/gi, '')
         .replace(/\[assignee::\s*[^\]]+\]/gi, '')
-        .replace(/\[project::\s*[^\]]+\]/gi, '')
-        .replace(/\[description::\s*[^\]]+\]/gi, '')
-        .replace(/\[completed::\s*[^\]]+\]/gi, '')
         .replace(/<!--\s*task-ref:\s*[^>]+\s*-->/gi, '')
         .replace(/<!--\s*gtask-id:\s*[^>]+\s*-->/gi, '')
+        .replace(/<!--\s*email-ref:\s*[^>]+\s*-->/gi, '')
         .trim();
 
       const taskId = `inline:${relPath}:${index}`;
@@ -164,18 +160,17 @@ function parseInlineTasks(filePath, project) {
         id: taskId,
         isAtomic: false,
         title: cleanTitle,
-        description,
         status: isDone ? 'done' : 'todo',
         priority,
         due,
         assignee,
-        completed,
-        project: projectVal,
+        project: project || path.basename(path.dirname(filePath)),
         parent_plan: relPath,
         filePath,
         lineIndex: index,
         taskRef,
         gtaskId,
+        email_ref: emailRef,
         rawLine: line
       });
     }
@@ -184,356 +179,176 @@ function parseInlineTasks(filePath, project) {
   return tasks;
 }
 
-let cachedTasks = null;
-let lastCacheTime = 0;
-const CACHE_TTL_MS = 2000;
+// Scans vault for all tasks
+export function getAllTasks(includeArchive = false) {
+  const activeFiles = getFilesRecursively(ACTIVE_PROJECTS_DIR);
+  let filesToScan = [...activeFiles];
 
-export function invalidateTaskCache() {
-  cachedTasks = null;
-}
-
-async function getFilesRecursivelyAsync(dir, fileList = []) {
-  try {
-    if (!fs.existsSync(dir)) return fileList;
-    const files = await fs.promises.readdir(dir, { withFileTypes: true });
-    for (const file of files) {
-      if (file.name.startsWith('_') || file.name.startsWith('.')) continue;
-      const filePath = path.join(dir, file.name);
-      if (file.isDirectory()) {
-        await getFilesRecursivelyAsync(filePath, fileList);
-      } else if (file.name.endsWith('.md')) {
-        fileList.push(filePath);
-      }
-    }
-  } catch (e) {
-    // Directory may not exist
+  if (includeArchive && fs.existsSync(ARCHIVE_DIR)) {
+    const archiveFiles = getFilesRecursively(ARCHIVE_DIR);
+    filesToScan.push(...archiveFiles);
   }
-  return fileList;
-}
 
-async function parseMarkdownFileAsync(filePath) {
-  try {
-    const content = await fs.promises.readFile(filePath, 'utf8');
-    const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---/;
-    const match = content.match(frontmatterRegex);
+  const tasks = [];
+  const atomicTaskRefs = new Set();
 
-    if (match) {
-      try {
-        const frontmatter = parseYamlFrontmatter(match[1]);
-        const body = content.slice(match[0].length);
-        return { frontmatter, body, rawContent: content };
-      } catch (e) {
-        return { frontmatter: null, body: content, rawContent: content };
-      }
-    }
-    return { frontmatter: null, body: content, rawContent: content };
-  } catch (e) {
-    return { frontmatter: null, body: '', rawContent: '' };
-  }
-}
-
-async function parseInlineTasksAsync(filePath, project) {
-  try {
-    const content = await fs.promises.readFile(filePath, 'utf8');
-    const lines = content.split(/\r?\n/);
-    const tasks = [];
-    const relPath = path.relative(ACTIVE_PROJECTS_DIR, filePath).replace(/\\/g, '/');
-
-    lines.forEach((line, index) => {
-      const taskMatch = line.match(/^(\s*)-\s*\[([ xX])\]\s*(.*)$/);
-      if (taskMatch) {
-        const isDone = taskMatch[2].toLowerCase() === 'x';
-        let rawText = taskMatch[3];
-
-        let priority = 'medium';
-        const priorityMatch = rawText.match(/\[priority::\s*([^\]]+)\]/i);
-        if (priorityMatch) priority = priorityMatch[1].trim().toLowerCase();
-
-        let due = null;
-        const dueMatch = rawText.match(/\[due::\s*([^\]]+)\]/i);
-        if (dueMatch) due = dueMatch[1].trim();
-
-        let assignee = null;
-        const assigneeMatch = rawText.match(/\[assignee::\s*([^\]]+)\]/i);
-        if (assigneeMatch) assignee = assigneeMatch[1].trim().toLowerCase();
-
-        let description = '';
-        const descMatch = rawText.match(/\[description::\s*([^\]]+)\]/i);
-        if (descMatch) description = descMatch[1].trim();
-
-        let completed = null;
-        const completedMatch = rawText.match(/\[completed::\s*([^\]]+)\]/i);
-        if (completedMatch) completed = completedMatch[1].trim();
-
-        let taskRef = null;
-        const refMatch = rawText.match(/<!--\s*task-ref:\s*([^>\s]+)\s*-->/i);
-        if (refMatch) {
-          taskRef = refMatch[1];
-          // Skip inline task line if it is a reference link pointing to an existing atomic file on disk
-          const targetAtomicPath = path.join(path.dirname(filePath), taskRef.replace(/^\.\//, ''));
-          if (fs.existsSync(targetAtomicPath)) {
-            return;
-          }
-        }
-
-        let gtaskId = null;
-        const gtaskMatch = rawText.match(/<!--\s*gtask-id:\s*([^>\s]+)\s*-->/i);
-        if (gtaskMatch) gtaskId = gtaskMatch[1];
-
-        let projectOverride = null;
-        const projectMatch = rawText.match(/\[project::\s*([^\]]+)\]/i);
-        if (projectMatch) projectOverride = projectMatch[1].trim();
-
-        let projectVal = projectOverride || project || path.basename(path.dirname(filePath));
-        if (['CoworkMemory', 'cowork-memory-backup', 'KB Business', 'Kinbots Development'].includes(projectVal)) {
-          projectVal = 'ACTIVE_KINBOTS';
-        }
-
-        const cleanTitle = rawText
-          .replace(/\[priority::\s*[^\]]+\]/gi, '')
-          .replace(/\[due::\s*[^\]]+\]/gi, '')
-          .replace(/\[assignee::\s*[^\]]+\]/gi, '')
-          .replace(/\[project::\s*[^\]]+\]/gi, '')
-          .replace(/\[description::\s*[^\]]+\]/gi, '')
-          .replace(/\[completed::\s*[^\]]+\]/gi, '')
-          .replace(/<!--\s*task-ref:\s*[^>\s]+\s*-->/gi, '')
-          .replace(/<!--\s*gtask-id:\s*[^>\s]+\s*-->/gi, '')
-          .trim();
-
-        const taskId = `inline:${relPath}:${index}`;
-
+  // First pass: Collect atomic tasks
+  for (const filePath of filesToScan) {
+    const baseName = path.basename(filePath);
+    if (baseName.startsWith('task-') && baseName.endsWith('.md')) {
+      const { frontmatter, body } = parseMarkdownFile(filePath);
+      if (frontmatter && frontmatter.type === 'Task') {
+        const relPath = path.relative(ACTIVE_PROJECTS_DIR, filePath).replace(/\\/g, '/');
+        const project = frontmatter.project || path.basename(path.dirname(filePath));
+        atomicTaskRefs.add(baseName);
+        atomicTaskRefs.add(relPath);
         tasks.push({
-          id: taskId,
-          isAtomic: false,
-          title: cleanTitle,
-          description,
-          status: isDone ? 'done' : 'todo',
-          priority,
-          due,
-          assignee,
-          completed,
-          project: projectVal,
-          parent_plan: relPath,
+          id: `atomic:${relPath}`,
+          isAtomic: true,
+          title: frontmatter.title || baseName.replace(/^task-|\.md$/g, ''),
+          description: frontmatter.description || '',
+          status: frontmatter.status || 'todo',
+          priority: (frontmatter.priority || 'medium').toLowerCase(),
+          due: frontmatter.due || null,
+          assignee: (frontmatter.assignee || '').toLowerCase() || null,
+          project,
+          parent_plan: frontmatter.parent_plan || 'project.md',
           filePath,
-          lineIndex: index,
-          taskRef,
-          gtaskId,
-          rawLine: line
+          body,
+          frontmatter,
+          email_ref: frontmatter.email_ref || null,
+          email_sender: frontmatter.email_sender || null,
+          email_snippet: frontmatter.email_snippet || null,
+          gtaskId: frontmatter.gtask_id || null
         });
       }
-    });
-
-    return tasks;
-  } catch (e) {
-    return [];
-  }
-}
-
-let vaultTasksCache = null;
-let isCacheUpdating = false;
-
-export async function refreshVaultCache(includeArchive = false) {
-  if (isCacheUpdating) return vaultTasksCache || [];
-  isCacheUpdating = true;
-  try {
-    const activeFiles = await getFilesRecursivelyAsync(ACTIVE_PROJECTS_DIR);
-    let filesToScan = [...activeFiles];
-
-    if (includeArchive && fs.existsSync(ARCHIVE_DIR)) {
-      const archiveFiles = await getFilesRecursivelyAsync(ARCHIVE_DIR);
-      filesToScan.push(...archiveFiles);
     }
+  }
 
-    const tasks = [];
-
-    await Promise.all(
-      filesToScan.map(async (filePath) => {
-        const baseName = path.basename(filePath);
-        const relParts = path.relative(ACTIVE_PROJECTS_DIR, filePath).split(path.sep);
-        const topFolder = relParts.length > 1 ? relParts[0] : 'General';
-
-        if (baseName.startsWith('task-') && baseName.endsWith('.md')) {
-          const { frontmatter, body } = await parseMarkdownFileAsync(filePath);
-          if (frontmatter && frontmatter.type === 'Task') {
-            const relPath = path.relative(ACTIVE_PROJECTS_DIR, filePath).replace(/\\/g, '/');
-            let project = frontmatter.project || topFolder;
-            if (topFolder === 'ACTIVE_KINBOTS' || ['CoworkMemory', 'cowork-memory-backup', 'KB Business', 'Kinbots Development'].includes(project)) {
-              project = 'ACTIVE_KINBOTS';
+  // Second pass: Collect inline tasks, filtering out duplicate taskRef pointers to atomic task files
+  for (const filePath of filesToScan) {
+    const baseName = path.basename(filePath);
+    if (!baseName.startsWith('task-') || !baseName.endsWith('.md')) {
+      if (baseName !== 'dashboard.md' && baseName !== 'Agent_Queue.md' && baseName !== 'weekly_review_latest.md') {
+        const project = path.basename(path.dirname(filePath));
+        const inlineTasks = parseInlineTasks(filePath, project);
+        for (const t of inlineTasks) {
+          if (t.taskRef) {
+            const refBase = path.basename(t.taskRef);
+            if (atomicTaskRefs.has(refBase)) {
+              continue; // Deduplicate: Atomic task file already represents this item
             }
-
-            let taskTitle = frontmatter.title;
-            if (!taskTitle && body) {
-              const h1Match = body.match(/^#\s*(?:📋\s*Task:\s*)?([^\r\n]+)/m);
-              if (h1Match) taskTitle = h1Match[1].trim();
-            }
-            if (!taskTitle) {
-              taskTitle = baseName.replace(/^task-|\.md$/g, '').replace(/-/g, ' ');
-            }
-
-            tasks.push({
-              id: `atomic:${relPath}`,
-              isAtomic: true,
-              title: taskTitle,
-              description: frontmatter.description || '',
-              status: frontmatter.status || 'todo',
-              priority: (frontmatter.priority || 'medium').toLowerCase(),
-              due: frontmatter.due || null,
-              assignee: (frontmatter.assignee || '').toLowerCase() || null,
-              completed: frontmatter.completed || frontmatter.completed_date || frontmatter.completed_at || null,
-              project,
-              parent_plan: frontmatter.parent_plan || 'project.md',
-              filePath,
-              body,
-              frontmatter,
-              gtaskId: frontmatter.gtask_id || null
-            });
           }
-        } else {
-          if (baseName !== 'dashboard.md' && baseName !== 'Agent_Queue.md' && baseName !== 'weekly_review_latest.md') {
-            let project = topFolder;
-            if (topFolder === 'ACTIVE_KINBOTS' || ['CoworkMemory', 'cowork-memory-backup', 'KB Business', 'Kinbots Development'].includes(project)) {
-              project = 'ACTIVE_KINBOTS';
-            }
-            const inlineTasks = await parseInlineTasksAsync(filePath, project);
-            tasks.push(...inlineTasks);
-          }
+          tasks.push(t);
         }
-      })
-    );
-
-    vaultTasksCache = tasks;
-  } catch (err) {
-    console.error('Error refreshing vault cache:', err);
-  } finally {
-    isCacheUpdating = false;
+      }
+    }
   }
-  return vaultTasksCache || [];
+
+  return tasks;
 }
 
-export function getAllTasks(includeArchive = false) {
-  if (!vaultTasksCache) {
-    refreshVaultCache(includeArchive);
-    return [];
-  }
-  return vaultTasksCache;
-}
-
+// Update task in file
 export async function updateTask(taskId, updates) {
-  const todayStr = new Date().toISOString().slice(0, 10);
-  let completedDate = updates.completed;
-  if (updates.status === 'done' && completedDate === undefined) {
-    completedDate = todayStr;
-  } else if (updates.status && updates.status !== 'done' && updates.completed === undefined) {
-    completedDate = null;
-  }
-
   if (taskId.startsWith('atomic:')) {
     const relPath = taskId.replace('atomic:', '');
-    let filePath = path.join(ACTIVE_PROJECTS_DIR, relPath);
+    const filePath = path.join(ACTIVE_PROJECTS_DIR, relPath);
     if (!fs.existsSync(filePath)) throw new Error(`Atomic task file not found: ${filePath}`);
 
-    let { frontmatter, body } = parseMarkdownFile(filePath);
+    const { frontmatter, body } = parseMarkdownFile(filePath);
     if (!frontmatter) throw new Error(`Invalid frontmatter in ${filePath}`);
 
-    const oldProject = frontmatter.project || 'General';
+    const oldProject = frontmatter.project || path.basename(path.dirname(filePath));
+    const newProject = updates.project && updates.project !== oldProject ? updates.project : null;
 
     if (updates.status !== undefined) frontmatter.status = updates.status;
     if (updates.priority !== undefined) frontmatter.priority = updates.priority;
     if (updates.title !== undefined) frontmatter.title = updates.title;
-    if (updates.description !== undefined) {
-      frontmatter.description = updates.description;
-      if (body) {
-        if (body.includes('## Notes')) {
-          body = body.replace(/(## Notes[^\n]*\r?\n)([\s\S]*)/, `$1\n${updates.description}\n`);
-        } else {
-          body = `\n## Notes & Execution Steps\n\n${updates.description}\n`;
-        }
-      } else {
-        body = `\n## Notes & Execution Steps\n\n${updates.description}\n`;
-      }
-    }
+    if (updates.description !== undefined) frontmatter.description = updates.description;
     if (updates.due !== undefined) frontmatter.due = updates.due;
     if (updates.assignee !== undefined) frontmatter.assignee = updates.assignee;
-    if (completedDate !== undefined) {
-      if (completedDate) {
-        frontmatter.completed = completedDate;
-      } else {
-        delete frontmatter.completed;
-        delete frontmatter.completed_date;
-        delete frontmatter.completed_at;
+    if (updates.email_ref !== undefined) frontmatter.email_ref = updates.email_ref || null;
+    if (updates.email_sender !== undefined) frontmatter.email_sender = updates.email_sender || null;
+    if (updates.email_snippet !== undefined) frontmatter.email_snippet = updates.email_snippet || null;
+
+    if (newProject) {
+      frontmatter.project = newProject;
+      if (Array.isArray(frontmatter.tags)) {
+        frontmatter.tags = frontmatter.tags.filter((t) => t.toLowerCase() !== oldProject.toLowerCase());
+        if (!frontmatter.tags.includes(newProject.toLowerCase())) {
+          frontmatter.tags.push(newProject.toLowerCase());
+        }
       }
     }
+    frontmatter.processed_at = new Date().toISOString().slice(0, 19) + 'Z';
 
-    // Handle Project Reassignment for Atomic Tasks
-    let newFilePath = filePath;
-    if (updates.project !== undefined && updates.project.trim() && updates.project.trim() !== oldProject) {
-      const targetProject = updates.project.trim();
-      frontmatter.project = targetProject;
-
-      // Update tags array to reflect new project tag
-      if (Array.isArray(frontmatter.tags)) {
-        const oldTag = oldProject.toLowerCase();
-        const newTag = targetProject.toLowerCase();
-        frontmatter.tags = frontmatter.tags.map((t) => (t === oldTag ? newTag : t));
-        if (!frontmatter.tags.includes(newTag)) frontmatter.tags.push(newTag);
+    if (newProject) {
+      const newProjectDir = path.join(ACTIVE_PROJECTS_DIR, newProject);
+      if (!fs.existsSync(newProjectDir)) {
+        fs.mkdirSync(newProjectDir, { recursive: true });
       }
+      let targetFileName = path.basename(filePath);
+      let targetFilePath = path.join(newProjectDir, targetFileName);
 
-      const targetProjectDir = path.join(ACTIVE_PROJECTS_DIR, targetProject);
-      if (!fs.existsSync(targetProjectDir)) {
-        fs.mkdirSync(targetProjectDir, { recursive: true });
-      }
-
-      let fileName = path.basename(filePath);
-      let candidatePath = path.join(targetProjectDir, fileName);
-
-      // Collision prevention: append suffix if file already exists in destination
-      if (fs.existsSync(candidatePath) && candidatePath !== filePath) {
-        const ext = path.extname(fileName);
-        const nameWithoutExt = path.basename(fileName, ext);
+      // Collision guard: if targetFilePath already exists and is not the current file
+      if (fs.existsSync(targetFilePath) && targetFilePath !== filePath) {
+        const ext = path.extname(targetFileName);
+        const nameWithoutExt = path.basename(targetFileName, ext);
         let counter = 1;
-        while (fs.existsSync(candidatePath)) {
-          candidatePath = path.join(targetProjectDir, `${nameWithoutExt}-${counter}${ext}`);
+        while (fs.existsSync(path.join(newProjectDir, `${nameWithoutExt}-${counter}${ext}`))) {
           counter++;
         }
-        fileName = path.basename(candidatePath);
+        targetFileName = `${nameWithoutExt}-${counter}${ext}`;
+        targetFilePath = path.join(newProjectDir, targetFileName);
       }
 
-      newFilePath = candidatePath;
-
-      // Remove reference from old parent project.md
-      const oldParentPlanPath = path.join(path.dirname(filePath), frontmatter.parent_plan || 'project.md');
-      if (fs.existsSync(oldParentPlanPath)) {
-        const oldContent = fs.readFileSync(oldParentPlanPath, 'utf8');
-        const oldLines = oldContent.split(/\r?\n/).filter((l) => !l.includes(path.basename(filePath)));
-        await writeFileWithRetry(oldParentPlanPath, oldLines.join('\n'));
+      // Clear obsolete gtask_id so it can be re-synced cleanly to target project task list
+      if (frontmatter.gtask_id) {
+        delete frontmatter.gtask_id;
       }
 
-      // If physical path changed, delete old file
-      if (filePath !== newFilePath && fs.existsSync(filePath)) {
+      const newContent = `---\n${stringifyYamlFrontmatter(frontmatter)}---\n${body}`;
+      await writeFileWithRetry(targetFilePath, newContent);
+
+      if (fs.existsSync(filePath) && targetFilePath !== filePath) {
         fs.unlinkSync(filePath);
       }
 
-      // Append reference to new parent project.md
-      const newParentPlanPath = path.join(targetProjectDir, 'project.md');
-      let inlineItem = `- [ ] ${frontmatter.title} [priority:: ${frontmatter.priority || 'medium'}] <!-- task-ref: ./${fileName} -->\n`;
-      if (fs.existsSync(newParentPlanPath)) {
-        const currentNewContent = fs.readFileSync(newParentPlanPath, 'utf8');
-        await writeFileWithRetry(newParentPlanPath, currentNewContent + '\n' + inlineItem);
-      } else {
-        const initProject = `---\ntype: Project\ntitle: "${targetProject} Project"\nstatus: active\n---\n\n# ${targetProject} Project\n\n## Tasks\n${inlineItem}`;
-        await writeFileWithRetry(newParentPlanPath, initProject);
+      // Remove inline task-ref from old project.md
+      const oldParentPath = path.join(path.dirname(filePath), frontmatter.parent_plan || 'project.md');
+      if (fs.existsSync(oldParentPath)) {
+        const oldContent = fs.readFileSync(oldParentPath, 'utf8');
+        const oldFileName = path.basename(filePath);
+        const filteredLines = oldContent
+          .split(/\r?\n/)
+          .filter((line) => !line.includes(oldFileName));
+        await writeFileWithRetry(oldParentPath, filteredLines.join('\n'));
       }
-    }
 
-    frontmatter.processed_at = new Date().toISOString().slice(0, 19) + 'Z';
+      // Add inline task-ref into new project.md
+      const newProjectMdPath = path.join(newProjectDir, 'project.md');
+      let inlineItem = `- [${frontmatter.status === 'done' ? 'x' : ' '}] ${frontmatter.title} [priority:: ${frontmatter.priority}]`;
+      if (frontmatter.due) inlineItem += ` [due:: ${frontmatter.due}]`;
+      if (frontmatter.assignee) inlineItem += ` [assignee:: ${frontmatter.assignee}]`;
+      if (frontmatter.email_ref) inlineItem += ` <!-- email-ref: ${frontmatter.email_ref} -->`;
+      inlineItem += ` <!-- task-ref: ./${targetFileName} -->`;
 
-    const newContent = `---\n${stringifyYamlFrontmatter(frontmatter)}---\n${body}`;
-    await writeFileWithRetry(newFilePath, newContent);
+      if (fs.existsSync(newProjectMdPath)) {
+        const curr = fs.readFileSync(newProjectMdPath, 'utf8');
+        await writeFileWithRetry(newProjectMdPath, curr.trimEnd() + '\n' + inlineItem + '\n');
+      } else {
+        const initProject = `---\ntype: "Project"\ntitle: "${newProject} Project"\nstatus: "active"\n---\n\n# ${newProject} Project\n\n## Tasks\n${inlineItem}\n`;
+        await writeFileWithRetry(newProjectMdPath, initProject);
+      }
+    } else {
+      const newContent = `---\n${stringifyYamlFrontmatter(frontmatter)}---\n${body}`;
+      await writeFileWithRetry(filePath, newContent);
 
-    if (frontmatter.parent_plan) {
-      const parentPath = path.join(path.dirname(newFilePath), frontmatter.parent_plan);
-      if (fs.existsSync(parentPath)) {
-        await syncInlineTaskFromAtomic(parentPath, path.basename(newFilePath), frontmatter.status === 'done');
+      if (frontmatter.parent_plan) {
+        const parentPath = path.join(path.dirname(filePath), frontmatter.parent_plan);
+        if (fs.existsSync(parentPath)) {
+          await syncInlineTaskFromAtomic(parentPath, baseName(filePath), frontmatter.status === 'done');
+        }
       }
     }
   } else if (taskId.startsWith('inline:')) {
@@ -550,17 +365,12 @@ export async function updateTask(taskId, updates) {
 
     let line = lines[lineIndex];
 
+    const currentProject = path.basename(path.dirname(filePath));
+    const newProject = updates.project && updates.project !== currentProject ? updates.project : null;
+
     if (updates.status !== undefined) {
       const mark = updates.status === 'done' ? 'x' : ' ';
       line = line.replace(/^(\s*-\s*\[)[ xX](\])/, `$1${mark}$2`);
-    }
-
-    if (updates.title !== undefined && updates.title.trim()) {
-      const prefixMatch = line.match(/^(\s*-\s*\[[ xX]\]\s*)/);
-      const prefix = prefixMatch ? prefixMatch[1] : '- [ ] ';
-      const metaMatch = line.match(/(\s*\[(priority|due|assignee|project|description|completed)::.*|<!--.*)/i);
-      const metadataStr = metaMatch ? metaMatch[0] : '';
-      line = `${prefix}${updates.title.trim()}${metadataStr}`;
     }
 
     if (updates.priority !== undefined) {
@@ -581,59 +391,56 @@ export async function updateTask(taskId, updates) {
 
     if (updates.due !== undefined) {
       if (/\[due::\s*[^\]]+\]/i.test(line)) {
-        if (updates.due) {
-          line = line.replace(/\[due::\s*[^\]]+\]/i, `[due:: ${updates.due}]`);
-        } else {
-          line = line.replace(/\s*\[due::\s*[^\]]+\]/i, '');
-        }
+        line = line.replace(/\[due::\s*[^\]]+\]/i, `[due:: ${updates.due}]`);
       } else if (updates.due) {
         line += ` [due:: ${updates.due}]`;
       }
     }
 
-    if (updates.description !== undefined) {
-      const cleanDesc = (updates.description || '').replace(/[\r\n]+/g, ' ').trim();
-      if (/\[description::\s*[^\]]+\]/i.test(line)) {
-        if (cleanDesc) {
-          line = line.replace(/\[description::\s*[^\]]+\]/i, `[description:: ${cleanDesc}]`);
+    if (updates.email_ref !== undefined) {
+      if (/<!--\s*email-ref:\s*[^>]+\s*-->/i.test(line)) {
+        if (updates.email_ref) {
+          line = line.replace(/<!--\s*email-ref:\s*[^>]+\s*-->/i, `<!-- email-ref: ${updates.email_ref} -->`);
         } else {
-          line = line.replace(/\s*\[description::\s*[^\]]+\]/i, '');
+          line = line.replace(/<!--\s*email-ref:\s*[^>]+\s*-->/i, '').trim();
         }
-      } else if (cleanDesc) {
-        line += ` [description:: ${cleanDesc}]`;
+      } else if (updates.email_ref) {
+        line += ` <!-- email-ref: ${updates.email_ref} -->`;
       }
     }
 
-    if (updates.project !== undefined && updates.project.trim()) {
-      const targetProj = updates.project.trim();
-      if (/\[project::\s*[^\]]+\]/i.test(line)) {
-        line = line.replace(/\[project::\s*[^\]]+\]/i, `[project:: ${targetProj}]`);
+    if (newProject) {
+      // Remove inline task from old file
+      lines.splice(lineIndex, 1);
+      await writeFileWithRetry(filePath, lines.join('\n'));
+
+      // Clean out old gtask-id reference before relocating to new project
+      line = line.replace(/<!--\s*gtask-id:\s*[^>]+\s*-->/i, '').trim();
+
+      // Add to new project.md
+      const newProjectDir = path.join(ACTIVE_PROJECTS_DIR, newProject);
+      if (!fs.existsSync(newProjectDir)) {
+        fs.mkdirSync(newProjectDir, { recursive: true });
+      }
+      const newProjectMdPath = path.join(newProjectDir, 'project.md');
+      if (fs.existsSync(newProjectMdPath)) {
+        const curr = fs.readFileSync(newProjectMdPath, 'utf8');
+        await writeFileWithRetry(newProjectMdPath, curr.trimEnd() + '\n' + line + '\n');
       } else {
-        line += ` [project:: ${targetProj}]`;
+        const initProject = `---\ntype: "Project"\ntitle: "${newProject} Project"\nstatus: "active"\n---\n\n# ${newProject} Project\n\n## Tasks\n${line}\n`;
+        await writeFileWithRetry(newProjectMdPath, initProject);
       }
+    } else {
+      lines[lineIndex] = line;
+      await writeFileWithRetry(filePath, lines.join('\n'));
     }
-
-    if (completedDate !== undefined) {
-      if (/\[completed::\s*[^\]]+\]/i.test(line)) {
-        if (completedDate) {
-          line = line.replace(/\[completed::\s*[^\]]+\]/i, `[completed:: ${completedDate}]`);
-        } else {
-          line = line.replace(/\s*\[completed::\s*[^\]]+\]/i, '');
-        }
-      } else if (completedDate) {
-        line += ` [completed:: ${completedDate}]`;
-      }
-    }
-
-    lines[lineIndex] = line;
-    await writeFileWithRetry(filePath, lines.join('\n'));
   }
 
-  await refreshVaultCache();
   await syncObsidianDashboard();
   return true;
 }
 
+// Sync inline task checkbox when atomic task changes status
 async function syncInlineTaskFromAtomic(parentPath, atomicFileName, isDone) {
   if (!fs.existsSync(parentPath)) return;
   const content = fs.readFileSync(parentPath, 'utf8');
@@ -662,8 +469,21 @@ function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+// Create Task (Atomic or Inline)
 export async function createTask(taskData) {
-  const { title, description, project, priority = 'medium', due = null, assignee = null, isAtomic = true } = taskData;
+  const {
+    title,
+    description,
+    project,
+    priority = 'medium',
+    due = null,
+    assignee = null,
+    isAtomic = true,
+    email_ref = null,
+    email_sender = null,
+    email_snippet = null,
+    log_correspondence = false
+  } = taskData;
   const targetProject = project || 'General';
   const projectDir = path.join(ACTIVE_PROJECTS_DIR, targetProject);
 
@@ -673,10 +493,21 @@ export async function createTask(taskData) {
 
   const timestamp = new Date().toISOString().slice(0, 19) + 'Z';
 
+  let fileName = null;
+  let filePath = null;
+
   if (isAtomic) {
-    const slug = slugify(title);
-    const fileName = `task-${slug}.md`;
-    const filePath = path.join(projectDir, fileName);
+    const baseSlug = slugify(title) || 'task';
+    fileName = `task-${baseSlug}.md`;
+    filePath = path.join(projectDir, fileName);
+    let counter = 1;
+
+    // Filename collision guard: prevent overwriting existing notes
+    while (fs.existsSync(filePath)) {
+      counter++;
+      fileName = `task-${baseSlug}-${counter}.md`;
+      filePath = path.join(projectDir, fileName);
+    }
 
     const frontmatter = {
       type: 'Task',
@@ -694,21 +525,30 @@ export async function createTask(taskData) {
     };
     if (due) frontmatter.due = due;
     if (assignee) frontmatter.assignee = assignee;
+    if (email_ref) frontmatter.email_ref = email_ref;
+    if (email_sender) frontmatter.email_sender = email_sender;
+    if (email_snippet) frontmatter.email_snippet = email_snippet;
 
-    const content = `---\n${stringifyYamlFrontmatter(frontmatter)}---\n\n## Notes & Execution Steps\n\n* Task created via Task Dashboard UI.\n`;
+    let notesBody = `* Task created via Task Dashboard UI.\n`;
+    if (email_ref) {
+      notesBody = `* **Email Thread**: [${title}](${email_ref})\n* **From**: ${email_sender || 'Unknown'}\n\n> ${email_snippet || 'No email snippet preview.'}\n`;
+    }
+
+    const content = `---\n${stringifyYamlFrontmatter(frontmatter)}---\n\n## Notes & Execution Steps\n\n${notesBody}`;
     await writeFileWithRetry(filePath, content);
 
     const projectMdPath = path.join(projectDir, 'project.md');
     let inlineItem = `- [ ] ${title} [priority:: ${priority}]`;
     if (due) inlineItem += ` [due:: ${due}]`;
     if (assignee) inlineItem += ` [assignee:: ${assignee}]`;
+    if (email_ref) inlineItem += ` <!-- email-ref: ${email_ref} -->`;
     inlineItem += ` <!-- task-ref: ./${fileName} -->\n`;
 
     if (fs.existsSync(projectMdPath)) {
       const current = fs.readFileSync(projectMdPath, 'utf8');
       await writeFileWithRetry(projectMdPath, current + '\n' + inlineItem);
     } else {
-      const initProject = `---\ntype: Project\ntitle: "${targetProject} Project"\nstatus: active\n---\n\n# ${targetProject} Project\n\n## Tasks\n${inlineItem}`;
+      const initProject = `---\ntype: "Project"\ntitle: "${targetProject} Project"\nstatus: "active"\n---\n\n# ${targetProject} Project\n\n## Tasks\n${inlineItem}`;
       await writeFileWithRetry(projectMdPath, initProject);
     }
   } else {
@@ -716,21 +556,92 @@ export async function createTask(taskData) {
     let inlineItem = `- [ ] ${title} [priority:: ${priority}]`;
     if (due) inlineItem += ` [due:: ${due}]`;
     if (assignee) inlineItem += ` [assignee:: ${assignee}]`;
+    if (email_ref) inlineItem += ` <!-- email-ref: ${email_ref} -->`;
 
     if (fs.existsSync(projectMdPath)) {
       const current = fs.readFileSync(projectMdPath, 'utf8');
       await writeFileWithRetry(projectMdPath, current + '\n' + inlineItem + '\n');
     } else {
-      const initProject = `---\ntype: Project\ntitle: "${targetProject} Project"\nstatus: active\n---\n\n# ${targetProject} Project\n\n## Tasks\n${inlineItem}\n`;
+      const initProject = `---\ntype: "Project"\ntitle: "${targetProject} Project"\nstatus: "active"\n---\n\n# ${targetProject} Project\n\n## Tasks\n${inlineItem}\n`;
       await writeFileWithRetry(projectMdPath, initProject);
     }
   }
 
-  await refreshVaultCache();
+  if (email_ref && log_correspondence) {
+    try {
+      await associateEmailToProject({
+        project: targetProject,
+        subject: title,
+        sender: email_sender || 'Unknown',
+        threadUrl: email_ref,
+        date: timestamp.slice(0, 10)
+      });
+    } catch (e) {
+      console.warn('Could not auto-log email correspondence:', e);
+    }
+  }
+
   await syncObsidianDashboard();
-  return true;
+  return { success: true, fileName: isAtomic ? fileName : null, filePath: isAtomic ? filePath : null };
 }
 
+// Associate email to project correspondence log
+export async function associateEmailToProject({ project, subject, sender, threadUrl, date }) {
+  const targetProject = project || 'General';
+  const projectDir = path.join(ACTIVE_PROJECTS_DIR, targetProject);
+  if (!fs.existsSync(projectDir)) {
+    fs.mkdirSync(projectDir, { recursive: true });
+  }
+
+  const projectMdPath = path.join(projectDir, 'project.md');
+  const entryDate = date || new Date().toISOString().slice(0, 10);
+  const logEntry = `- [${entryDate}] [${subject}](${threadUrl}) — From: ${sender || 'Unknown'}\n`;
+
+  if (fs.existsSync(projectMdPath)) {
+    let current = fs.readFileSync(projectMdPath, 'utf8');
+    if (/##.*Correspondence/i.test(current)) {
+      current = current.replace(/(##.*Correspondence[^\n]*\n)/i, `$1${logEntry}`);
+    } else {
+      current += `\n\n## Correspondence\n\n${logEntry}`;
+    }
+    await writeFileWithRetry(projectMdPath, current);
+  } else {
+    const initProject = `---\ntype: "Project"\ntitle: "${targetProject} Project"\nstatus: "active"\n---\n\n# ${targetProject} Project\n\n## Correspondence\n\n${logEntry}\n## Tasks\n`;
+    await writeFileWithRetry(projectMdPath, initProject);
+  }
+
+  await syncObsidianDashboard();
+  return { success: true };
+}
+
+// Get all correspondence entries for a project
+export function getProjectCorrespondence(projectName) {
+  const projectDir = path.join(ACTIVE_PROJECTS_DIR, projectName);
+  const projectMdPath = path.join(projectDir, 'project.md');
+  if (!fs.existsSync(projectMdPath)) return [];
+
+  const content = fs.readFileSync(projectMdPath, 'utf8');
+  const match = content.match(/##.*Correspondence([\s\S]*?)(?=\n##|$)/i);
+  if (!match) return [];
+
+  const lines = match[1].split(/\r?\n/);
+  const entries = [];
+  for (const line of lines) {
+    const itemMatch = line.match(/^-\s*\[([^\]]+)\]\s*\[(.+)\]\((https?:\/\/[^)]+)\)\s*(?:—\s*From:\s*(.*))?$/);
+    if (itemMatch) {
+      entries.push({
+        date: itemMatch[1],
+        subject: itemMatch[2],
+        url: itemMatch[3],
+        threadUrl: itemMatch[3],
+        sender: itemMatch[4]?.trim() || 'Unknown'
+      });
+    }
+  }
+  return entries;
+}
+
+// Promote Inline Task to Atomic File per SOP
 export async function promoteTask(taskId) {
   if (!taskId.startsWith('inline:')) throw new Error('Only inline tasks can be promoted.');
 
@@ -779,37 +690,7 @@ export async function promoteTask(taskId) {
   return true;
 }
 
-export async function undoPromoteTask(atomicTaskId) {
-  const allTasks = getAllTasks(true);
-  const task = allTasks.find((t) => t.id === atomicTaskId);
-  if (!task || !task.isAtomic) return false;
-
-  const fileName = path.basename(task.filePath);
-  const projectDir = path.dirname(task.filePath);
-
-  if (fs.existsSync(task.filePath)) {
-    fs.unlinkSync(task.filePath);
-  }
-
-  if (task.parent_plan) {
-    const parentPath = path.join(projectDir, task.parent_plan);
-    if (fs.existsSync(parentPath)) {
-      const content = fs.readFileSync(parentPath, 'utf8');
-      const lines = content.split(/\r?\n/);
-      const newLines = lines.map((line) => {
-        if (line.includes(fileName)) {
-          return line.replace(/\s*<!--\s*task-ref:\s*[^>]+\s*-->/gi, '');
-        }
-        return line;
-      });
-      await writeFileWithRetry(parentPath, newLines.join('\n'));
-    }
-  }
-
-  await syncObsidianDashboard();
-  return true;
-}
-
+// Approve Agent Candidate Task
 export async function approveAgentTask(taskId) {
   const allTasks = getAllTasks();
   const task = allTasks.find((t) => t.id === taskId);
@@ -832,6 +713,25 @@ export async function approveAgentTask(taskId) {
   return true;
 }
 
+function adjustLinksForDashboard(title, sourceFilePath) {
+  if (!sourceFilePath || !title) return title;
+  const sourceDir = path.dirname(sourceFilePath);
+  return title.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, target) => {
+    if (
+      target.startsWith('http://') ||
+      target.startsWith('https://') ||
+      target.startsWith('mailto:') ||
+      target.startsWith('#')
+    ) {
+      return match;
+    }
+    const absTarget = path.resolve(sourceDir, target);
+    const relToDashboard = path.relative(ACTIVE_PROJECTS_DIR, absTarget).replace(/\\/g, '/');
+    return `[${label}](${relToDashboard})`;
+  });
+}
+
+// Auto-regenerate 1.active_projects/dashboard.md to keep Obsidian aligned
 export async function syncObsidianDashboard() {
   try {
     const tasks = getAllTasks();
@@ -848,7 +748,10 @@ export async function syncObsidianDashboard() {
     } else {
       md += `| ✔️ | Task | Project | Due Date | Priority |\n| :---: | :--- | :--- | :---: | :---: |\n`;
       dueTodayOrOverdue.forEach((t) => {
-        md += `| [ ] | ${t.title} | ${t.project} | ${t.due} | ${t.priority} |\n`;
+        let title = adjustLinksForDashboard(t.title, t.filePath).replace(/\|/g, '\\|');
+        const proj = (t.project || 'General').replace(/\|/g, '\\|');
+        if (t.email_ref) title += ` [✉️](${t.email_ref})`;
+        md += `| [ ] | ${title} | ${proj} | ${t.due} | ${t.priority} |\n`;
       });
       md += `\n`;
     }
@@ -861,7 +764,10 @@ export async function syncObsidianDashboard() {
     } else {
       md += `| ✔️ | Task | Project | Priority | Status |\n| :---: | :--- | :--- | :---: | :---: |\n`;
       agentTasks.forEach((t) => {
-        md += `| [ ] | ${t.title} | ${t.project} | ${t.priority} | ${t.status} |\n`;
+        let title = adjustLinksForDashboard(t.title, t.filePath).replace(/\|/g, '\\|');
+        const proj = (t.project || 'General').replace(/\|/g, '\\|');
+        if (t.email_ref) title += ` [✉️](${t.email_ref})`;
+        md += `| [ ] | ${title} | ${proj} | ${t.priority} | ${t.status} |\n`;
       });
       md += `\n`;
     }
@@ -873,111 +779,28 @@ export async function syncObsidianDashboard() {
     } else {
       md += `| ✔️ | Task | Project | Due Date | Assignee |\n| :---: | :--- | :--- | :---: | :---: |\n`;
       highPriority.forEach((t) => {
-        md += `| [ ] | ${t.title} | ${t.project} | ${t.due || '—'} | ${t.assignee || '—'} |\n`;
+        let title = adjustLinksForDashboard(t.title, t.filePath).replace(/\|/g, '\\|');
+        const proj = (t.project || 'General').replace(/\|/g, '\\|');
+        if (t.email_ref) title += ` [✉️](${t.email_ref})`;
+        md += `| [ ] | ${title} | ${proj} | ${t.due || '—'} | ${t.assignee || '—'} |\n`;
       });
       md += `\n`;
     }
 
-    md += `---\n\n## 📂 Master Active Projects Checklist\n\n| ✔️ | Task | Project | Priority | Due Date | Assignee | Sync Status |\n| :---: | :--- | :--- | :---: | :---: | :---: | :---: |\n`;
+    md += `---\n\n## 📂 Master Active Projects Checklist\n\n| ✔️ | Task | Project | Priority | Due Date | Assignee | Source / Sync |\n| :---: | :--- | :--- | :---: | :---: | :---: | :---: |\n`;
 
     activeTasks.forEach((t) => {
-      const gSync = t.gtaskId ? `[🔗 Synced](https://calendar.google.com/calendar/r/tasks)` : `—`;
-      md += `| [ ] | ${t.title} | ${t.project} | ${t.priority} | ${t.due || '—'} | ${t.assignee || '—'} | ${gSync} |\n`;
+      const syncParts = [];
+      if (t.email_ref) syncParts.push(`[✉️ Gmail](${t.email_ref})`);
+      if (t.gtaskId) syncParts.push(`[🔗 GTasks](https://calendar.google.com/calendar/r/tasks)`);
+      const syncDisplay = syncParts.length > 0 ? syncParts.join(' ') : '—';
+      const title = adjustLinksForDashboard(t.title, t.filePath).replace(/\|/g, '\\|');
+      const proj = (t.project || 'General').replace(/\|/g, '\\|');
+      md += `| [ ] | ${title} | ${proj} | ${t.priority} | ${t.due || '—'} | ${t.assignee || '—'} | ${syncDisplay} |\n`;
     });
 
     await writeFileWithRetry(DASHBOARD_MD_PATH, md);
   } catch (err) {
     console.error('Error syncing Obsidian dashboard:', err);
   }
-}
-
-export async function getProjectDetail(projectName) {
-  if (!projectName) throw new Error('Project name is required');
-  const projectDir = path.join(ACTIVE_PROJECTS_DIR, projectName);
-  const projectMdPath = path.join(projectDir, 'project.md');
-
-  if (!fs.existsSync(projectMdPath)) {
-    return {
-      name: projectName,
-      title: `${projectName} Project`,
-      status: 'active',
-      description: '',
-      target_date: '',
-      owner: '',
-      body: '',
-      exists: false,
-      filePath: projectMdPath
-    };
-  }
-
-  const { frontmatter, body } = parseMarkdownFile(projectMdPath);
-  
-  let notesBody = body || '';
-  if (notesBody.includes('## Tasks')) {
-    notesBody = notesBody.split('## Tasks')[0].trim();
-  }
-
-  return {
-    name: projectName,
-    title: (frontmatter && frontmatter.title) || `${projectName} Project`,
-    status: (frontmatter && frontmatter.status) || 'active',
-    description: (frontmatter && frontmatter.description) || '',
-    target_date: (frontmatter && (frontmatter.target_date || frontmatter.due)) || '',
-    owner: (frontmatter && (frontmatter.owner || frontmatter.assignee)) || '',
-    body: notesBody.replace(/^#\s*[^\r\n]+\r?\n/, '').trim(),
-    exists: true,
-    filePath: projectMdPath
-  };
-}
-
-export async function updateProjectDetail(projectName, updates) {
-  if (!projectName) throw new Error('Project name is required');
-  let targetProjectName = projectName;
-
-  if (updates.name && updates.name.trim() && updates.name.trim() !== projectName) {
-    const newProjectName = updates.name.trim();
-    const oldDir = path.join(ACTIVE_PROJECTS_DIR, projectName);
-    const newDir = path.join(ACTIVE_PROJECTS_DIR, newProjectName);
-
-    if (fs.existsSync(oldDir)) {
-      if (fs.existsSync(newDir)) {
-        throw new Error(`A project directory named "${newProjectName}" already exists.`);
-      }
-      fs.renameSync(oldDir, newDir);
-    }
-    targetProjectName = newProjectName;
-  }
-
-  const targetDir = path.join(ACTIVE_PROJECTS_DIR, targetProjectName);
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
-
-  const projectMdPath = path.join(targetDir, 'project.md');
-
-  let existingTasksSection = '';
-  if (fs.existsSync(projectMdPath)) {
-    const existingContent = fs.readFileSync(projectMdPath, 'utf8');
-    if (existingContent.includes('## Tasks')) {
-      existingTasksSection = '\n\n## Tasks' + existingContent.split('## Tasks')[1];
-    }
-  }
-
-  const frontmatter = {
-    type: 'Project',
-    title: updates.title || `${targetProjectName} Project`,
-    status: updates.status || 'active',
-    description: updates.description || '',
-    target_date: updates.target_date || '',
-    owner: updates.owner || '',
-    updated: new Date().toISOString().slice(0, 10)
-  };
-
-  const cleanBody = (updates.body || '').trim();
-  const fullContent = `---\n${stringifyYamlFrontmatter(frontmatter)}---\n\n# ${frontmatter.title}\n\n${cleanBody}${existingTasksSection}\n`;
-
-  await writeFileWithRetry(projectMdPath, fullContent);
-  await refreshVaultCache();
-  await syncObsidianDashboard();
-  return { success: true, name: targetProjectName };
 }
